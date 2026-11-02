@@ -1,7 +1,8 @@
-/* My Attendance · CIT 1201 coded prototype
-   One student journey: check the remaining absence allowance (SC1, SC2, SC5),
-   review records (SC3), understand an excuse under review (SC4) and
-   report a wrong record (SC6). Sample data only; nothing is stored or sent. */
+/* My Attendance by Group 6 · CIT 1201 coded prototype
+   One student journey: sign in, check the remaining absence allowance (SC1, SC2, SC5),
+   review records (SC3), understand an excuse under review (SC4) and report a wrong
+   record (SC6). Facilitators can record usability-test results on the evaluation page.
+   Sample data only. Nothing is sent anywhere; this is not real authentication. */
 (function () {
   'use strict';
 
@@ -12,8 +13,48 @@
   var CLOSE_AT = 2;
   // Time the sample attendance data was last updated.
   var DATA_UPDATED = '2026-11-08T10:00:00+03:00';
-  // Simulated network time when sending a report (ms).
+  // Simulated network times (ms).
   var SEND_DELAY = 900;
+  var SIGNIN_DELAY = 500;
+  // Shared password for the Group 6 sample accounts. A prototype only: not real security.
+  var PASSWORD = 'group6';
+
+  // Group 6 accounts. Sign in with the first name in English or Arabic.
+  var ACCOUNTS = [
+    { id: 'omar', names: ['omar', 'عمر'], first: { en: 'Omar', ar: 'عمر' }, full: { en: 'Omar Al-Kuwaikbi', ar: 'عمر المديغم الكويكبي' } },
+    { id: 'bassam', names: ['bassam', 'basam', 'بسام'], first: { en: 'Bassam', ar: 'بسام' }, full: { en: 'Bassam Al-Anazi', ar: 'بسام العنزي' } },
+    { id: 'faris', names: ['faris', 'fares', 'فارس'], first: { en: 'Faris', ar: 'فارس' }, full: { en: 'Faris Al-Anazi', ar: 'فارس العنزي' } },
+    { id: 'faisal', names: ['faisal', 'faysal', 'فيصل'], first: { en: 'Faisal', ar: 'فيصل' }, full: { en: 'Faisal Al-Mashhouri Al-Huwaiti', ar: 'فيصل المشهوري الحويطي' } },
+    { id: 'mohammed', names: ['mohammed', 'mohammad', 'muhammad', 'mohamed', 'محمد'], first: { en: 'Mohammed', ar: 'محمد' }, full: { en: 'Mohammed Al-Salmani Al-Faifi', ar: 'محمد السلماني الفيفي' } },
+    { id: 'musaed', names: ['musaed', 'mosaed', 'musaad', 'مساعد'], first: { en: 'Musaed', ar: 'مساعد' }, full: { en: 'Musaed Al-Fakhiri', ar: 'مساعد الفاخري' } }
+  ];
+  var GUEST = { id: 'guest', guest: true, first: { en: '', ar: '' }, full: { en: 'Sample student', ar: 'طالب تجريبي' } };
+
+  var KEY = {
+    user: 'group6-user',
+    lastName: 'group6-last-username',
+    lang: 'group6-lang',
+    large: 'group6-large-text',
+    evals: 'group6-evaluation-records'
+  };
+
+  /* ---------- Storage (wrapped: storage can be blocked or unavailable) ---------- */
+  function storage(kind) {
+    try { return kind === 'session' ? window.sessionStorage : window.localStorage; } catch (e) { return null; }
+  }
+  function readItem(kind, key) {
+    var s = storage(kind);
+    if (!s) return null;
+    try { return s.getItem(key); } catch (e) { return null; }
+  }
+  function writeItem(kind, key, value) {
+    var s = storage(kind);
+    if (!s) return false;
+    try {
+      if (value === null) s.removeItem(key); else s.setItem(key, value);
+      return true;
+    } catch (e) { return false; }
+  }
 
   /* ---------- Sample data ---------- */
   function seed() {
@@ -68,14 +109,31 @@
   /* ---------- State ---------- */
   var params = new URLSearchParams(location.search);
   var state = seed();
-  state.lang = params.get('lang') === 'ar' || params.get('lang') === 'en' ? params.get('lang') : readLang();
+  state.lang = params.get('lang') === 'ar' || params.get('lang') === 'en'
+    ? params.get('lang')
+    : (readItem('local', KEY.lang) === 'ar' ? 'ar' : 'en');
   state.testMode = params.has('test');
+  state.user = accountById(readItem('session', KEY.user));
+  state.largeText = readItem('local', KEY.large) === '1';
+  state.menuOpen = false;
+  state.loginFails = 0;
+  state.evals = loadEvals();
+  state.evalParticipant = '';
 
-  function readLang() {
-    try { return localStorage.getItem('attendance-lang') === 'ar' ? 'ar' : 'en'; } catch (e) { return 'en'; }
+  function accountById(id) {
+    if (!id) return null;
+    if (id === GUEST.id) return GUEST;
+    return ACCOUNTS.filter(function (a) { return a.id === id; })[0] || null;
   }
-  function saveLang() {
-    try { localStorage.setItem('attendance-lang', state.lang); } catch (e) { /* storage unavailable: language resets on reload */ }
+  function normaliseName(s) {
+    return String(s || '').trim().toLowerCase().replace(/\s+/g, '')
+      .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+  }
+  function accountByName(name) {
+    var n = normaliseName(name);
+    return ACCOUNTS.filter(function (a) {
+      return a.names.some(function (x) { return normaliseName(x) === n; });
+    })[0] || null;
   }
 
   /* ---------- Formatting ---------- */
@@ -101,6 +159,11 @@
       hour12: false, timeZone: 'Asia/Riyadh'
     }).format(new Date(DATA_UPDATED));
   }
+  function fmtStamp(iso) {
+    return new Intl.DateTimeFormat(locale(), {
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false
+    }).format(new Date(iso));
+  }
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -119,12 +182,48 @@
   var STR = {
     en: {
       appName: 'My Attendance',
-      term: 'Fall 2026',
+      byGroup: 'By Group 6',
       langButton: 'عربي',
       langButtonLang: 'ar',
       skip: 'Skip to content',
+
+      /* Sign in */
+      loginStatement: 'Know how many more lectures you can miss, before it is too late.',
+      loginTitle: 'Sign in',
+      loginIntro: 'Use your Group 6 account to see your courses.',
+      username: 'Username',
+      usernameHint: 'Your first name, in English or Arabic.',
+      password: 'Password',
+      show: 'Show',
+      hide: 'Hide',
+      showLabel: 'Show password',
+      hideLabel: 'Hide password',
+      capsOn: 'Caps Lock is on.',
+      signIn: 'Sign in',
+      signingIn: 'Signing in…',
+      errUser: 'Enter your username.',
+      errPass: 'Enter your password.',
+      errWrong: 'The username or password is not correct. Check both and try again.',
+      errWrongHelp: 'Still not working? Use the sample student account below, or ask a Group 6 member for the password.',
+      or: 'or',
+      guestButton: 'Try the sample student account',
+      loginNote: 'This prototype is not connected to any university system. Never enter your university password here.',
+      aboutLink: 'About this prototype',
+      welcome: function (name) { return name ? 'Signed in as ' + name : 'Signed in with the sample account'; },
+
+      /* Account */
+      account: 'Account menu',
+      signedInAs: 'Signed in as',
+      largeText: 'Larger text',
+      evaluationLink: 'Evaluation record',
+      signOut: 'Sign out',
+      signedOut: 'You are signed out',
+
+      /* Courses */
+      term: 'Fall 2026',
       coursesTitle: 'Your courses',
-      coursesIntro: 'How many more lectures you can miss in each course this semester.',
+      hello: function (name) { return name ? 'Hello, ' + name + '.' : 'Hello.'; },
+      coursesIntro: 'Here is how many more lectures you can miss in each course this semester.',
       updated: function (d) { return 'Attendance updated ' + d; },
       left: function (n) { return n + ' left'; },
       reviewCount: function (n) { return n === 1 ? '1 excuse under review' : n + ' excuses under review'; },
@@ -157,6 +256,8 @@
       limitTitle: 'You have used all your allowed absences',
       limitBody: 'Another absence may bar you from the final exam. Contact your academic advisor today.',
       advisorHours: 'Academic advising office: Sunday to Thursday, 8:00 to 14:00.',
+
+      /* Records, excuse, report */
       recordsTitle: 'Absence records',
       recordsIntro: function (code) { return 'Every recorded absence in ' + code + ', newest first.'; },
       type: { counted: 'Counted', excused: 'Excused, not counted', review: 'Excuse under review' },
@@ -191,7 +292,56 @@
       record: 'Record',
       sentNext: 'Your lecturer will review it within 3 working days. The absence still counts until then.',
       backToRecords: 'Back to absence records',
-      footer: 'Prototype for CIT 1201 with sample data only. No real student information is used.',
+
+      /* About */
+      aboutTitle: 'About this prototype',
+      aboutBody: 'My Attendance helps a student see how many more lectures they can miss in a course before the absence limit, and what to do about it. Group 6 designed it and is testing it with students for CIT 1201 Human–Computer Interaction.',
+      teamTitle: 'Group 6',
+      dataNote: 'All courses, dates and absences are sample data. The prototype is not connected to any university system.',
+      backSignIn: 'Sign in',
+
+      /* Evaluation record */
+      evalTitle: 'Evaluation record',
+      evalIntro: 'For the facilitator and observer. Record one entry for each task a participant attempts.',
+      evalPrivacy: 'Use participant codes only, never names. Records stay in this browser until you download or clear them.',
+      evalNoStorage: 'This browser is not keeping records between visits. Download the CSV before closing the page.',
+      participant: 'Participant code',
+      choose: 'Choose',
+      task: 'Task',
+      tasks: { T1: 'T1 Remaining absences', T2: 'T2 Excuse under review', T3: 'T3 Report a wrong record' },
+      outcome: 'Outcome',
+      outcomes: { success: 'Success without help', helped: 'Success with help', failed: 'Not completed' },
+      errors: 'Errors',
+      errorsHint: 'Wrong taps or paths the participant had to undo.',
+      help: 'Help given (when and why)',
+      satisfaction: 'Satisfaction: “How satisfied were you?”',
+      scale: ['Very dissatisfied', 'Dissatisfied', 'Neither', 'Satisfied', 'Very satisfied'],
+      comment: '“What felt reassuring or frustrating?” (their words)',
+      observation: 'What you observed',
+      saveRecord: 'Save record',
+      saved: 'Record saved',
+      errParticipant: 'Choose a participant code.',
+      errTask: 'Choose a task.',
+      errOutcome: 'Choose an outcome.',
+      errSat: 'Choose a satisfaction score.',
+      summaryTitle: 'Summary by task',
+      summaryNote: 'Each rate uses attempts on the same task as its denominator. Two or three peers cannot show that the design works for everyone.',
+      colTask: 'Task', colAttempts: 'Attempts', colSuccess: 'Without help', colHelped: 'With help', colFailed: 'Not completed', colSat: 'Average satisfaction',
+      ofAttempts: function (n, d) { return d ? n + ' of ' + d + ' (' + Math.round(n / d * 100) + '%)' : '–'; },
+      recordsListTitle: 'Records',
+      noRecords: 'No records yet. Saved entries appear here.',
+      download: 'Download CSV',
+      clearAll: 'Clear all records',
+      confirmClear: 'Select again to clear all',
+      cleared: 'All records cleared',
+      remove: 'Delete',
+      confirmRemove: 'Select again to delete',
+      removed: 'Record deleted',
+      recorded: 'Recorded',
+      satShort: 'Satisfaction',
+
+      /* Footer and test panel */
+      footer: 'Designed by Group 6 for CIT 1201. Sample data only; no real student information is used.',
       testTitle: 'Test settings for the facilitator',
       reset: 'Reset sample data',
       failNext: 'Make the next report fail to send',
@@ -200,12 +350,45 @@
     },
     ar: {
       appName: 'حضوري',
-      term: 'الفصل الأول ٢٠٢٦',
+      byGroup: 'من تصميم المجموعة ٦',
       langButton: 'English',
       langButtonLang: 'en',
       skip: 'تخطَّ إلى المحتوى',
+
+      loginStatement: 'اعرف كم محاضرة تقدر تغيب عنها بعد، قبل فوات الأوان.',
+      loginTitle: 'تسجيل الدخول',
+      loginIntro: 'ادخل بحساب المجموعة ٦ لترى مقرراتك.',
+      username: 'اسم المستخدم',
+      usernameHint: 'اسمك الأول، بالعربي أو الإنجليزي.',
+      password: 'كلمة المرور',
+      show: 'إظهار',
+      hide: 'إخفاء',
+      showLabel: 'إظهار كلمة المرور',
+      hideLabel: 'إخفاء كلمة المرور',
+      capsOn: 'زر الأحرف الكبيرة (Caps Lock) مفعّل.',
+      signIn: 'دخول',
+      signingIn: 'جارٍ الدخول…',
+      errUser: 'اكتب اسم المستخدم.',
+      errPass: 'اكتب كلمة المرور.',
+      errWrong: 'اسم المستخدم أو كلمة المرور غير صحيحة. تحقق منهما وحاول مرة أخرى.',
+      errWrongHelp: 'ما زالت المشكلة؟ ادخل بحساب الطالب التجريبي أدناه، أو اطلب كلمة المرور من أحد أعضاء المجموعة ٦.',
+      or: 'أو',
+      guestButton: 'جرّب حساب الطالب التجريبي',
+      loginNote: 'هذا النموذج غير مرتبط بأي نظام جامعي. لا تُدخل كلمة مرور الجامعة هنا أبداً.',
+      aboutLink: 'عن هذا النموذج',
+      welcome: function (name) { return name ? 'تم الدخول باسم ' + name : 'تم الدخول بالحساب التجريبي'; },
+
+      account: 'قائمة الحساب',
+      signedInAs: 'مسجّل الدخول باسم',
+      largeText: 'تكبير الخط',
+      evaluationLink: 'سجل التقييم',
+      signOut: 'تسجيل الخروج',
+      signedOut: 'تم تسجيل خروجك',
+
+      term: 'الفصل الأول ٢٠٢٦',
       coursesTitle: 'مقرراتك',
-      coursesIntro: 'عدد المحاضرات التي يمكنك الغياب عنها بعد في كل مقرر هذا الفصل.',
+      hello: function (name) { return name ? 'أهلاً ' + name + '.' : 'أهلاً بك.'; },
+      coursesIntro: 'هذا عدد المحاضرات التي يمكنك الغياب عنها بعد في كل مقرر هذا الفصل.',
       updated: function (d) { return 'آخر تحديث للحضور ' + d; },
       left: function (n) { return 'المتبقي ' + num(n); },
       reviewCount: function (n) { return n === 1 ? 'عذر واحد قيد المراجعة' : num(n) + ' أعذار قيد المراجعة'; },
@@ -237,6 +420,7 @@
       limitTitle: 'استخدمت كل الغيابات المسموحة',
       limitBody: 'أي غياب إضافي قد يحرمك من الاختبار النهائي. تواصل مع مرشدك الأكاديمي اليوم.',
       advisorHours: 'مكتب الإرشاد الأكاديمي: من الأحد إلى الخميس، من ٨:٠٠ إلى ١٤:٠٠.',
+
       recordsTitle: 'سجل الغياب',
       recordsIntro: function (code) { return 'كل غياب مسجّل في ' + code + '، الأحدث أولاً.'; },
       type: { counted: 'محسوب', excused: 'بعذر، غير محسوب', review: 'عذر قيد المراجعة' },
@@ -271,7 +455,53 @@
       record: 'السجل',
       sentNext: 'سيراجعه أستاذ المقرر خلال ٣ أيام عمل، ويبقى الغياب محسوباً حتى ذلك الحين.',
       backToRecords: 'العودة إلى سجل الغياب',
-      footer: 'نموذج أولي لمقرر CIT 1201 ببيانات تجريبية فقط، ولا يستخدم أي بيانات حقيقية للطلاب.',
+
+      aboutTitle: 'عن هذا النموذج',
+      aboutBody: 'يساعد «حضوري» الطالب على معرفة عدد المحاضرات التي يمكنه الغياب عنها في مقرر قبل الوصول لحد الحرمان، وماذا يفعل حيال ذلك. صممته المجموعة ٦ وتختبره مع الطلاب ضمن مقرر CIT 1201 تفاعل الإنسان والحاسب.',
+      teamTitle: 'المجموعة ٦',
+      dataNote: 'كل المقررات والتواريخ والغيابات بيانات تجريبية، والنموذج غير مرتبط بأي نظام جامعي.',
+      backSignIn: 'تسجيل الدخول',
+
+      evalTitle: 'سجل التقييم',
+      evalIntro: 'للميسّر والمراقب. سجّل إدخالاً واحداً لكل مهمة يحاولها المشارك.',
+      evalPrivacy: 'استخدم رموز المشاركين فقط، ولا تكتب أسماء. تبقى السجلات في هذا المتصفح حتى تنزّلها أو تمسحها.',
+      evalNoStorage: 'هذا المتصفح لا يحفظ السجلات بين الزيارات. نزّل ملف CSV قبل إغلاق الصفحة.',
+      participant: 'رمز المشارك',
+      choose: 'اختر',
+      task: 'المهمة',
+      tasks: { T1: 'T1 الغياب المتبقي', T2: 'T2 العذر قيد المراجعة', T3: 'T3 الإبلاغ عن سجل خاطئ' },
+      outcome: 'النتيجة',
+      outcomes: { success: 'نجح دون مساعدة', helped: 'نجح بمساعدة', failed: 'لم يُكمل' },
+      errors: 'الأخطاء',
+      errorsHint: 'نقرات أو مسارات خاطئة اضطر المشارك للتراجع عنها.',
+      help: 'المساعدة المقدَّمة (متى ولماذا)',
+      satisfaction: 'الرضا: «ما مدى رضاك؟»',
+      scale: ['غير راضٍ إطلاقاً', 'غير راضٍ', 'محايد', 'راضٍ', 'راضٍ جداً'],
+      comment: '«ما الذي طمأنك أو أزعجك؟» (بكلماته)',
+      observation: 'ما لاحظته',
+      saveRecord: 'حفظ السجل',
+      saved: 'تم حفظ السجل',
+      errParticipant: 'اختر رمز المشارك.',
+      errTask: 'اختر المهمة.',
+      errOutcome: 'اختر النتيجة.',
+      errSat: 'اختر درجة الرضا.',
+      summaryTitle: 'ملخص لكل مهمة',
+      summaryNote: 'كل نسبة مقامها عدد محاولات المهمة نفسها. مشاركان أو ثلاثة لا يثبتون أن التصميم يناسب الجميع.',
+      colTask: 'المهمة', colAttempts: 'المحاولات', colSuccess: 'دون مساعدة', colHelped: 'بمساعدة', colFailed: 'لم يُكمل', colSat: 'متوسط الرضا',
+      ofAttempts: function (n, d) { return d ? num(n) + ' من ' + num(d) + ' (' + num(Math.round(n / d * 100)) + '٪)' : '–'; },
+      recordsListTitle: 'السجلات',
+      noRecords: 'لا توجد سجلات بعد. تظهر الإدخالات المحفوظة هنا.',
+      download: 'تنزيل CSV',
+      clearAll: 'مسح كل السجلات',
+      confirmClear: 'اضغط مرة أخرى لمسح الكل',
+      cleared: 'تم مسح كل السجلات',
+      remove: 'حذف',
+      confirmRemove: 'اضغط مرة أخرى للحذف',
+      removed: 'تم حذف السجل',
+      recorded: 'وقت التسجيل',
+      satShort: 'الرضا',
+
+      footer: 'من تصميم المجموعة ٦ لمقرر CIT 1201. بيانات تجريبية فقط، ولا يستخدم أي بيانات حقيقية للطلاب.',
       testTitle: 'إعدادات الاختبار للميسّر',
       reset: 'إعادة البيانات التجريبية',
       failNext: 'اجعل البلاغ التالي يفشل في الإرسال',
@@ -299,11 +529,23 @@
     flag: svg('<path d="M6 21V4M6 4h11.5l-2.4 4 2.4 4H6"/>'),
     back: svg('<path d="M15 5l-7 7 7 7"/>', 'ico--flip'),
     chevron: svg('<path d="M9 5l7 7-7 7"/>'),
+    down: svg('<path d="M6 9l6 6 6-6"/>'),
     alert: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.4v.3"/>'),
     lock: svg('<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>'),
     check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
-    dash: svg('<path d="M6 12h12"/>')
+    dash: svg('<path d="M6 12h12"/>'),
+    user: svg('<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.8 4-5.6 7.5-5.6s6.3 1.8 7.5 5.6"/>'),
+    text: svg('<path d="M4 18L8.5 6h1L14 18M5.6 14h6.8"/><path d="M15.5 18l2.7-7h.6l2.7 7M16.4 15.8h4.2"/>'),
+    info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.3"/>'),
+    clipboard: svg('<rect x="5" y="4.5" width="14" height="16.5" rx="2.5"/><path d="M9 4.5h6v3H9zM8.5 12h7M8.5 16h5"/>'),
+    signout: svg('<path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M10 16l-4-4 4-4M6 12h10"/>', 'ico--flip'),
+    download: svg('<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/>'),
+    trash: svg('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>')
   };
+  var LOGO = '<svg class="logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">' +
+    '<path d="M24 3 42.2 13.5v21L24 45 5.8 34.5v-21z" fill="#0F5F59"/>' +
+    '<path d="M24 9.6 36.5 16.8v14.4L24 38.4 11.5 31.2V16.8z" fill="none" stroke="#8CCBC0" stroke-width="1.4"/>' +
+    '<text x="24" y="30.6" text-anchor="middle" font-family="Readex Pro, system-ui, sans-serif" font-size="17" font-weight="600" fill="#FFFFFF">6</text></svg>';
 
   /* ---------- Calculations ---------- */
   function summary(course) {
@@ -319,7 +561,6 @@
     return { limit: limit, counted: counted, review: review, used: used, left: left, status: status };
   }
   function usedLeaves(course) {
-    // Oldest first, so the strip fills from the start like a calendar.
     return course.records.filter(function (r) { return r.type === 'counted' || r.type === 'review'; })
       .slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
   }
@@ -328,6 +569,9 @@
   /* ---------- Routing ---------- */
   function parseRoute() {
     var p = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+    if (p[0] === 'about') return { name: 'about' };
+    if (!state.user) return { name: 'login' };
+    if (p[0] === 'evaluation') return state.testMode ? { name: 'evaluation' } : { name: 'list' };
     if (p[0] !== 'course') return { name: 'list' };
     var course = findCourse(p[1]);
     if (!course) return { name: 'list' };
@@ -343,21 +587,107 @@
     if (rec.type === 'review') return { name: 'excuse', course: course, rec: rec };
     return { name: 'records', course: course };
   }
+  function routeKind(name) {
+    if (name === 'login') return 'login';
+    if (name === 'about' || name === 'evaluation') return 'page';
+    if (name === 'list') return 'list';
+    return 'detail';
+  }
   function findCourse(id) { return state.courses.filter(function (c) { return c.id === id; })[0]; }
   function findRecord(course, id) { return course.records.filter(function (r) { return r.id === id; })[0]; }
   function href(course, rest) { return '#/course/' + course.id + (rest ? '/' + rest : ''); }
+  function go(hash) {
+    if (location.hash === hash) render(true); else location.hash = hash;
+  }
 
   /* ---------- Pieces ---------- */
   function chip(kind, label) {
     var icon = { safe: ICON.safe, close: ICON.close, limit: ICON.limit, review: ICON.review, counted: ICON.counted, excused: ICON.excused }[kind];
     return '<span class="chip chip--' + kind + '">' + icon + '<span>' + esc(label) + '</span></span>';
   }
+  function outcomeChip(outcome) {
+    var kind = { success: 'safe', helped: 'close', failed: 'limit' }[outcome];
+    return chip(kind, t('outcomes')[outcome]);
+  }
   function backLink(target, label, extraClass) {
     return '<a class="back' + (extraClass ? ' ' + extraClass : '') + '" href="' + target + '">' + ICON.back + '<span>' + esc(label) + '</span></a>';
   }
   function courseName(course) { return course.name[state.lang]; }
+  function firstName(user) { return user.first[state.lang]; }
+  function initial(user) {
+    if (user.guest) return ICON.user;
+    return esc(firstName(user).charAt(0).toUpperCase());
+  }
+  function fieldError(id, message) {
+    return '<p class="field-error" id="' + id + '">' + ICON.alert + '<span>' + esc(message) + '</span></p>';
+  }
 
-  /* ---------- Views ---------- */
+  /* ---------- Views: sign in ---------- */
+  function viewLogin() {
+    var last = readItem('local', KEY.lastName) || '';
+    return '<section class="login">' +
+      '<div class="login-hero">' +
+        LOGO +
+        '<p class="login-statement">' + esc(t('loginStatement')) + '</p>' +
+        '<ul class="strip strip--hero" aria-hidden="true">' +
+          '<li class="leaf leaf--counted"><span class="leaf-day">' + esc(leafParts('2026-10-05').day) + '</span><span class="leaf-mon">' + esc(leafParts('2026-10-05').mon) + '</span></li>' +
+          '<li class="leaf leaf--counted"><span class="leaf-day">' + esc(leafParts('2026-10-19').day) + '</span><span class="leaf-mon">' + esc(leafParts('2026-10-19').mon) + '</span></li>' +
+          '<li class="leaf leaf--review"><span class="leaf-day">' + esc(leafParts('2026-10-26').day) + '</span><span class="leaf-mon">' + esc(leafParts('2026-10-26').mon) + '</span></li>' +
+          '<li class="leaf leaf--left"></li><li class="leaf leaf--left"></li><li class="leaf leaf--left"></li>' +
+        '</ul>' +
+      '</div>' +
+      '<div class="login-card">' +
+        '<h1 class="page-title" id="view-title" tabindex="-1">' + esc(t('loginTitle')) + '</h1>' +
+        '<p class="page-intro">' + esc(t('loginIntro')) + '</p>' +
+        '<form class="form form--login" id="login-form" novalidate>' +
+          '<div id="login-alert" tabindex="-1"></div>' +
+          '<div class="field">' +
+            '<label for="username">' + esc(t('username')) + '</label>' +
+            '<p class="hint" id="username-hint">' + esc(t('usernameHint')) + '</p>' +
+            '<div id="username-error"></div>' +
+            '<input class="input" id="username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="username-hint" value="' + esc(last) + '">' +
+          '</div>' +
+          '<div class="field">' +
+            '<label for="password">' + esc(t('password')) + '</label>' +
+            '<div id="password-error"></div>' +
+            '<div class="password-wrap">' +
+              '<input class="input" id="password" name="password" type="password" autocomplete="current-password" aria-describedby="caps-note">' +
+              '<button type="button" class="reveal" data-action="reveal" aria-controls="password" aria-label="' + esc(t('showLabel')) + '">' + esc(t('show')) + '</button>' +
+            '</div>' +
+            '<p class="caps" id="caps-note" hidden>' + ICON.alert + '<span>' + esc(t('capsOn')) + '</span></p>' +
+          '</div>' +
+          '<button type="submit" class="btn btn--primary btn--block" id="signin-btn">' + esc(t('signIn')) + '</button>' +
+        '</form>' +
+        '<p class="divider"><span>' + esc(t('or')) + '</span></p>' +
+        '<button type="button" class="btn btn--secondary btn--block" data-action="guest">' + esc(t('guestButton')) + '</button>' +
+        '<p class="login-note">' + ICON.lock + '<span>' + esc(t('loginNote')) + '</span></p>' +
+        '<p class="login-links"><a href="#/about">' + esc(t('aboutLink')) + '</a></p>' +
+      '</div>' +
+      '</section>';
+  }
+
+  /* ---------- Views: header account ---------- */
+  function viewAccount() {
+    if (!state.user) return '';
+    var u = state.user;
+    var name = u.guest ? u.full[state.lang] : firstName(u);
+    return '<div class="account">' +
+      '<button type="button" class="account-btn" id="account-btn" data-action="menu" aria-expanded="' + state.menuOpen + '" aria-controls="account-menu">' +
+        '<span class="avatar">' + initial(u) + '</span>' +
+        '<span class="visually-hidden">' + esc(t('account')) + ', </span>' +
+        '<span class="account-name">' + esc(name) + '</span>' + ICON.down +
+      '</button>' +
+      '<div class="menu" id="account-menu"' + (state.menuOpen ? '' : ' hidden') + '>' +
+        '<p class="menu-who">' + esc(t('signedInAs')) + '<strong>' + esc(u.full[state.lang]) + '</strong></p>' +
+        '<button type="button" class="menu-item" data-action="large" aria-pressed="' + state.largeText + '">' + ICON.text + '<span>' + esc(t('largeText')) + '</span><span class="menu-check">' + ICON.check + '</span></button>' +
+        (state.testMode ? '<a class="menu-item" href="#/evaluation" data-action="close-menu">' + ICON.clipboard + '<span>' + esc(t('evaluationLink')) + '</span></a>' : '') +
+        '<a class="menu-item" href="#/about" data-action="close-menu">' + ICON.info + '<span>' + esc(t('aboutLink')) + '</span></a>' +
+        '<button type="button" class="menu-item" data-action="signout">' + ICON.signout + '<span>' + esc(t('signOut')) + '</span></button>' +
+      '</div>' +
+      '</div>';
+  }
+
+  /* ---------- Views: courses ---------- */
   function viewList(route) {
     var current = route.course ? route.course.id : null;
     var courses = state.courses.slice().sort(function (a, b) {
@@ -376,8 +706,8 @@
         '</a></li>';
     }).join('');
     return '<' + tag + ' class="list-title" id="courses-title" tabindex="-1">' + esc(t('coursesTitle')) + '</' + tag + '>' +
-      '<p class="list-intro">' + esc(t('coursesIntro')) + '</p>' +
-      '<p class="updated">' + esc(t('updated', fmtUpdated())) + '</p>' +
+      '<p class="list-intro">' + esc(t('hello', firstName(state.user))) + ' ' + esc(t('coursesIntro')) + '</p>' +
+      '<p class="updated">' + esc(t('term')) + '. ' + esc(t('updated', fmtUpdated())) + '</p>' +
       '<ul class="courses">' + rows + '</ul>';
   }
 
@@ -520,12 +850,133 @@
       '</article>';
   }
 
+  /* ---------- Views: about ---------- */
+  function viewAbout() {
+    var back = state.user ? backLink('#/', t('backCourses')) : backLink('#/login', t('backSignIn'));
+    var team = ACCOUNTS.map(function (a) {
+      return '<li class="member"><span class="avatar avatar--lg">' + initial(a) + '</span><span>' + esc(a.full[state.lang]) + '</span></li>';
+    }).join('');
+    return '<article class="detail about">' +
+      back +
+      LOGO +
+      '<h1 class="page-title" id="view-title" tabindex="-1">' + esc(t('aboutTitle')) + '</h1>' +
+      '<p class="lead">' + esc(t('aboutBody')) + '</p>' +
+      '<h2 class="section-title">' + esc(t('teamTitle')) + '</h2>' +
+      '<ul class="team">' + team + '</ul>' +
+      '<p class="page-intro about-note">' + esc(t('dataNote')) + '</p>' +
+      '</article>';
+  }
+
+  /* ---------- Evaluation record (Topic 7: performance and affective metrics) ---------- */
+  var storageWorks = writeItem('local', 'group6-storage-check', '1');
+  writeItem('local', 'group6-storage-check', null);
+
+  function loadEvals() {
+    var raw = readItem('local', KEY.evals);
+    if (!raw) return [];
+    try {
+      var list = JSON.parse(raw);
+      return Array.isArray(list) ? list : [];
+    } catch (e) { return []; }
+  }
+  function saveEvals() { writeItem('local', KEY.evals, JSON.stringify(state.evals)); }
+
+  function evalSummary() {
+    return ['T1', 'T2', 'T3'].map(function (task) {
+      var rows = state.evals.filter(function (r) { return r.task === task; });
+      var count = function (o) { return rows.filter(function (r) { return r.outcome === o; }).length; };
+      var sats = rows.map(function (r) { return Number(r.sat); }).filter(function (n) { return n >= 1; });
+      var avg = sats.length ? sats.reduce(function (a, b) { return a + b; }, 0) / sats.length : null;
+      return { task: task, attempts: rows.length, success: count('success'), helped: count('helped'), failed: count('failed'), avg: avg };
+    });
+  }
+
+  function viewEvaluation() {
+    var codes = ['P4', 'P5', 'P6', 'P7', 'P8'];
+    var options = '<option value="">' + esc(t('choose')) + '</option>' + codes.map(function (c) {
+      return '<option value="' + c + '"' + (state.evalParticipant === c ? ' selected' : '') + '>' + c + '</option>';
+    }).join('');
+    var tasks = ['T1', 'T2', 'T3'].map(function (k) {
+      return '<label class="choice"><input type="radio" name="task" value="' + k + '"><span>' + esc(t('tasks')[k]) + '</span></label>';
+    }).join('');
+    var outcomes = ['success', 'helped', 'failed'].map(function (k) {
+      return '<label class="choice"><input type="radio" name="outcome" value="' + k + '"><span>' + esc(t('outcomes')[k]) + '</span></label>';
+    }).join('');
+    var scale = t('scale').map(function (label, i) {
+      return '<label class="choice"><input type="radio" name="sat" value="' + (i + 1) + '"><span class="scale-num">' + num(i + 1) + '</span><span class="scale-label">' + esc(label) + '</span></label>';
+    }).join('');
+
+    var rows = evalSummary().map(function (s) {
+      return '<tr><th scope="row">' + esc(s.task) + '</th>' +
+        '<td>' + num(s.attempts) + '</td>' +
+        '<td>' + esc(t('ofAttempts', s.success, s.attempts)) + '</td>' +
+        '<td>' + esc(t('ofAttempts', s.helped, s.attempts)) + '</td>' +
+        '<td>' + esc(t('ofAttempts', s.failed, s.attempts)) + '</td>' +
+        '<td>' + (s.avg === null ? '–' : esc(num(Math.round(s.avg * 10) / 10)) + ' / ' + num(5)) + '</td></tr>';
+    }).join('');
+
+    var list = state.evals.slice().reverse().map(function (r) {
+      var details = '';
+      details += '<div><dt>' + esc(t('errors')) + '</dt><dd>' + num(r.errors) + '</dd></div>';
+      details += '<div><dt>' + esc(t('satShort')) + '</dt><dd>' + num(r.sat) + ' / ' + num(5) + '</dd></div>';
+      if (r.help) details += '<div><dt>' + esc(t('help')) + '</dt><dd>' + esc(r.help) + '</dd></div>';
+      if (r.comment) details += '<div><dt>' + esc(t('comment')) + '</dt><dd>' + esc(r.comment) + '</dd></div>';
+      if (r.observation) details += '<div><dt>' + esc(t('observation')) + '</dt><dd>' + esc(r.observation) + '</dd></div>';
+      details += '<div><dt>' + esc(t('recorded')) + '</dt><dd>' + esc(fmtStamp(r.at)) + '</dd></div>';
+      return '<li class="eval-record">' +
+        '<div class="eval-record-head"><strong>' + esc(r.participant) + ', ' + esc(t('tasks')[r.task]) + '</strong>' + outcomeChip(r.outcome) + '</div>' +
+        '<dl>' + details + '</dl>' +
+        '<div><button type="button" class="btn-text btn-text--danger" data-action="eval-remove" data-id="' + esc(r.id) + '">' + esc(t('remove')) + '</button></div>' +
+        '</li>';
+    }).join('');
+
+    return '<article class="detail eval">' +
+      backLink('#/', t('backCourses')) +
+      '<h1 class="page-title" id="view-title" tabindex="-1">' + esc(t('evalTitle')) + '</h1>' +
+      '<p class="page-intro">' + esc(t('evalIntro')) + '</p>' +
+      '<p class="privacy">' + ICON.lock + '<span>' + esc(t('evalPrivacy')) + '</span></p>' +
+      (storageWorks ? '' : '<p class="alert">' + ICON.alert + '<span>' + esc(t('evalNoStorage')) + '</span></p>') +
+      '<form class="form form--wide" id="eval-form" novalidate>' +
+        '<div class="field">' +
+          '<label for="participant">' + esc(t('participant')) + '</label>' +
+          '<div id="participant-error"></div>' +
+          '<select class="input select" id="participant" name="participant">' + options + '</select>' +
+        '</div>' +
+        '<fieldset id="task-group"><legend>' + esc(t('task')) + '</legend><div id="task-error"></div><div class="segmented">' + tasks + '</div></fieldset>' +
+        '<fieldset id="outcome-group"><legend>' + esc(t('outcome')) + '</legend><div id="outcome-error"></div><div class="segmented">' + outcomes + '</div></fieldset>' +
+        '<div class="field">' +
+          '<label for="errors">' + esc(t('errors')) + '</label>' +
+          '<p class="hint" id="errors-hint">' + esc(t('errorsHint')) + '</p>' +
+          '<input class="input input--num" id="errors" name="errors" type="number" inputmode="numeric" min="0" max="20" value="0" aria-describedby="errors-hint">' +
+        '</div>' +
+        '<div class="field"><label for="help">' + esc(t('help')) + '</label><textarea id="help" name="help" maxlength="300"></textarea></div>' +
+        '<fieldset id="sat-group"><legend>' + esc(t('satisfaction')) + '</legend><div id="sat-error"></div><div class="scale">' + scale + '</div></fieldset>' +
+        '<div class="field"><label for="comment">' + esc(t('comment')) + '</label><textarea id="comment" name="comment" maxlength="300"></textarea></div>' +
+        '<div class="field"><label for="observation">' + esc(t('observation')) + '</label><textarea id="observation" name="observation" maxlength="500"></textarea></div>' +
+        '<div class="form-actions"><button type="submit" class="btn btn--primary">' + esc(t('saveRecord')) + '</button></div>' +
+      '</form>' +
+      '<h2 class="section-title">' + esc(t('summaryTitle')) + '</h2>' +
+      '<div class="table-wrap"><table class="summary"><thead><tr>' +
+        '<th scope="col">' + esc(t('colTask')) + '</th><th scope="col">' + esc(t('colAttempts')) + '</th><th scope="col">' + esc(t('colSuccess')) + '</th>' +
+        '<th scope="col">' + esc(t('colHelped')) + '</th><th scope="col">' + esc(t('colFailed')) + '</th><th scope="col">' + esc(t('colSat')) + '</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="hint">' + esc(t('summaryNote')) + '</p>' +
+      '<h2 class="section-title">' + esc(t('recordsListTitle')) + ' (' + num(state.evals.length) + ')</h2>' +
+      (state.evals.length ? '<ul class="eval-records">' + list + '</ul>' : '<p class="page-intro">' + esc(t('noRecords')) + '</p>') +
+      '<div class="toolbar">' +
+        '<button type="button" class="btn btn--secondary" data-action="eval-download"' + (state.evals.length ? '' : ' disabled') + '>' + ICON.download + '<span>' + esc(t('download')) + '</span></button>' +
+        '<button type="button" class="btn btn--quiet btn--danger" data-action="eval-clear"' + (state.evals.length ? '' : ' disabled') + '>' + ICON.trash + '<span>' + esc(t('clearAll')) + '</span></button>' +
+      '</div>' +
+      '</article>';
+  }
+
   function viewTestPanel() {
     if (!state.testMode) return '';
     return '<section class="test-panel" aria-labelledby="test-title">' +
       '<h2 id="test-title">' + esc(t('testTitle')) + '</h2>' +
       '<button type="button" class="btn btn--quiet" data-action="reset">' + esc(t('reset')) + '</button>' +
       '<label><input type="checkbox" data-action="fail-next"' + (state.failNext ? ' checked' : '') + '>' + esc(t('failNext')) + '</label>' +
+      (state.user ? '<a class="btn btn--quiet" href="#/evaluation">' + ICON.clipboard + '<span>' + esc(t('evaluationLink')) + '</span></a>' : '') +
       '</section>';
   }
 
@@ -535,29 +986,37 @@
   var toastEl = document.getElementById('toast');
   var toastTimer = null;
 
+  function renderHeader() {
+    document.getElementById('brand-name').textContent = t('appName');
+    document.getElementById('brand-by').textContent = t('byGroup');
+    var toggle = document.getElementById('lang-toggle');
+    toggle.textContent = t('langButton');
+    toggle.lang = t('langButtonLang');
+    document.getElementById('account').innerHTML = viewAccount();
+  }
+
   function render(moveFocus) {
     var route = parseRoute();
     var html = document.documentElement;
     html.lang = state.lang;
     html.dir = state.lang === 'ar' ? 'rtl' : 'ltr';
+    html.classList.toggle('large-text', state.largeText);
 
-    document.getElementById('brand-name').textContent = t('appName');
-    document.getElementById('brand-term').textContent = t('term');
-    var toggle = document.getElementById('lang-toggle');
-    toggle.textContent = t('langButton');
-    toggle.lang = t('langButtonLang');
+    if (moveFocus) state.menuOpen = false;
+    renderHeader();
     document.getElementById('footer-note').textContent = t('footer');
     document.getElementById('test-panel').innerHTML = viewTestPanel();
+    document.getElementById('skip-link').textContent = t('skip');
 
-    var skip = document.getElementById('skip-link');
-    skip.textContent = t('skip');
-    skip.setAttribute('href', route.name === 'list' ? '#course-list' : '#main');
-
-    document.body.dataset.route = route.name === 'list' ? 'list' : 'detail';
-    listEl.innerHTML = viewList(route);
+    var kind = routeKind(route.name);
+    document.body.dataset.route = kind;
+    listEl.innerHTML = kind === 'list' || kind === 'detail' ? viewList(route) : '';
 
     var title;
     switch (route.name) {
+      case 'login': mainEl.innerHTML = viewLogin(); title = t('loginTitle'); bindLoginForm(); break;
+      case 'about': mainEl.innerHTML = viewAbout(); title = t('aboutTitle'); break;
+      case 'evaluation': mainEl.innerHTML = viewEvaluation(); title = t('evalTitle'); bindEvalForm(); break;
       case 'course': mainEl.innerHTML = viewCourse(route.course); title = route.course.code; break;
       case 'records': mainEl.innerHTML = viewRecords(route.course); title = t('recordsTitle'); break;
       case 'excuse': mainEl.innerHTML = viewExcuse(route.course, route.rec); title = t('excuseTitle'); break;
@@ -572,6 +1031,96 @@
       if (target) target.focus({ preventScroll: true });
       window.scrollTo(0, 0);
     }
+  }
+
+  /* ---------- Sign in behaviour ---------- */
+  function bindLoginForm() {
+    var form = document.getElementById('login-form');
+    if (!form) return;
+    var pw = form.querySelector('#password');
+    var caps = form.querySelector('#caps-note');
+    function checkCaps(e) {
+      if (e.getModifierState) caps.hidden = !e.getModifierState('CapsLock');
+    }
+    pw.addEventListener('keydown', checkCaps);
+    pw.addEventListener('keyup', checkCaps);
+    pw.addEventListener('blur', function () { caps.hidden = true; });
+    form.addEventListener('input', function (e) {
+      if (e.target.id === 'username' || e.target.id === 'password') clearLoginFieldError(form, e.target.id);
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      submitLogin(form);
+    });
+  }
+
+  function clearLoginFieldError(form, id) {
+    form.querySelector('#' + id + '-error').innerHTML = '';
+    var input = form.querySelector('#' + id);
+    input.removeAttribute('aria-invalid');
+    var described = id === 'username' ? 'username-hint' : 'caps-note';
+    input.setAttribute('aria-describedby', described);
+  }
+
+  function setLoginFieldError(form, id, message) {
+    form.querySelector('#' + id + '-error').innerHTML = fieldError(id + '-error-text', message);
+    var input = form.querySelector('#' + id);
+    input.setAttribute('aria-invalid', 'true');
+    input.setAttribute('aria-describedby', id + '-error-text ' + (id === 'username' ? 'username-hint' : 'caps-note'));
+  }
+
+  function submitLogin(form) {
+    var userInput = form.querySelector('#username');
+    var pwInput = form.querySelector('#password');
+    var alertBox = form.querySelector('#login-alert');
+    alertBox.innerHTML = '';
+    clearLoginFieldError(form, 'username');
+    clearLoginFieldError(form, 'password');
+
+    var name = userInput.value.trim();
+    var pw = pwInput.value;
+    if (!name) setLoginFieldError(form, 'username', t('errUser'));
+    if (!pw) setLoginFieldError(form, 'password', t('errPass'));
+    if (!name) { userInput.focus(); return; }
+    if (!pw) { pwInput.focus(); return; }
+
+    writeItem('local', KEY.lastName, name);
+    var btn = form.querySelector('#signin-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>' + esc(t('signingIn')) + '</span>';
+    srAnnounce(t('signingIn'));
+
+    window.setTimeout(function () {
+      var account = accountByName(name);
+      if (!account || pw !== PASSWORD) {
+        state.loginFails += 1;
+        btn.disabled = false;
+        btn.textContent = t('signIn');
+        pwInput.value = '';
+        alertBox.innerHTML = '<div class="alert" role="alert">' + ICON.alert + '<div><p>' + esc(t('errWrong')) + '</p>' +
+          (state.loginFails >= 3 ? '<p class="alert-help">' + esc(t('errWrongHelp')) + '</p>' : '') + '</div></div>';
+        pwInput.focus();
+        return;
+      }
+      signIn(account);
+    }, SIGNIN_DELAY);
+  }
+
+  function signIn(account) {
+    state.user = account;
+    state.loginFails = 0;
+    writeItem('session', KEY.user, account.id);
+    var h = location.hash;
+    if (!h || h === '#' || /^#\/?login/.test(h)) go('#/'); else render(true);
+    srAnnounce(t('welcome', account.guest ? '' : account.full[state.lang]));
+  }
+
+  function signOut() {
+    state.user = null;
+    state.menuOpen = false;
+    writeItem('session', KEY.user, null);
+    go('#/login');
+    window.setTimeout(function () { announce(t('signedOut')); }, 80);
   }
 
   /* ---------- Report form behaviour ---------- */
@@ -593,7 +1142,7 @@
     form.addEventListener('change', function (e) {
       if (e.target.name === 'reason') {
         keepDraft();
-        clearReasonError(form);
+        clearGroupError(form, 'reason');
       }
     });
     form.addEventListener('submit', function (e) {
@@ -603,26 +1152,27 @@
     });
   }
 
-  function clearReasonError(form) {
-    var group = form.querySelector('#reason-group');
-    group.classList.remove('has-error');
-    form.querySelector('#reason-error').innerHTML = '';
-    Array.prototype.forEach.call(form.querySelectorAll('input[name="reason"]'), function (r) {
+  function clearGroupError(form, name) {
+    var group = form.querySelector('#' + name + '-group');
+    if (group) group.classList.remove('has-error');
+    var holder = form.querySelector('#' + name + '-error');
+    if (holder) holder.innerHTML = '';
+    Array.prototype.forEach.call(form.querySelectorAll('input[name="' + name + '"]'), function (r) {
       r.removeAttribute('aria-invalid');
       r.removeAttribute('aria-describedby');
     });
   }
 
-  function showReasonError(form) {
-    var group = form.querySelector('#reason-group');
-    group.classList.add('has-error');
-    form.querySelector('#reason-error').innerHTML = '<p class="field-error" id="reason-error-text">' + ICON.alert + '<span>' + esc(t('errChoose')) + '</span></p>';
-    var radios = form.querySelectorAll('input[name="reason"]');
-    Array.prototype.forEach.call(radios, function (r) {
+  function setGroupError(form, name, message) {
+    var group = form.querySelector('#' + name + '-group');
+    if (group) group.classList.add('has-error');
+    form.querySelector('#' + name + '-error').innerHTML = fieldError(name + '-error-text', message);
+    var inputs = form.querySelectorAll('input[name="' + name + '"]');
+    Array.prototype.forEach.call(inputs, function (r) {
       r.setAttribute('aria-invalid', 'true');
-      r.setAttribute('aria-describedby', 'reason-error-text');
+      r.setAttribute('aria-describedby', name + '-error-text');
     });
-    radios[0].focus();
+    return inputs[0];
   }
 
   function submitReport(form) {
@@ -632,7 +1182,7 @@
     var sendError = form.querySelector('#send-error');
     sendError.innerHTML = '';
 
-    if (!draft.reason) { showReasonError(form); return; }
+    if (!draft.reason) { setGroupError(form, 'reason', t('errChoose')).focus(); return; }
 
     var btn = form.querySelector('#send-btn');
     btn.disabled = true;
@@ -656,6 +1206,102 @@
     }, SEND_DELAY);
   }
 
+  /* ---------- Evaluation form behaviour ---------- */
+  function bindEvalForm() {
+    var form = document.getElementById('eval-form');
+    if (!form) return;
+    form.addEventListener('change', function (e) {
+      var n = e.target.name;
+      if (n === 'task' || n === 'outcome' || n === 'sat') clearGroupError(form, n);
+      if (n === 'participant') {
+        form.querySelector('#participant-error').innerHTML = '';
+        e.target.removeAttribute('aria-invalid');
+        state.evalParticipant = e.target.value;
+      }
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      submitEval(form);
+    });
+  }
+
+  function submitEval(form) {
+    var val = function (name) {
+      var el = form.querySelector('input[name="' + name + '"]:checked');
+      return el ? el.value : '';
+    };
+    var participant = form.querySelector('#participant').value;
+    var task = val('task'), outcome = val('outcome'), sat = val('sat');
+    var firstInvalid = null;
+    if (!participant) {
+      form.querySelector('#participant-error').innerHTML = fieldError('participant-error-text', t('errParticipant'));
+      form.querySelector('#participant').setAttribute('aria-invalid', 'true');
+      firstInvalid = form.querySelector('#participant');
+    }
+    if (!task) { var a = setGroupError(form, 'task', t('errTask')); firstInvalid = firstInvalid || a; }
+    if (!outcome) { var b = setGroupError(form, 'outcome', t('errOutcome')); firstInvalid = firstInvalid || b; }
+    if (!sat) { var c = setGroupError(form, 'sat', t('errSat')); firstInvalid = firstInvalid || c; }
+    if (firstInvalid) { firstInvalid.focus(); return; }
+
+    var errors = Math.max(0, Math.min(20, parseInt(form.querySelector('#errors').value, 10) || 0));
+    state.evals.push({
+      id: Date.now().toString(36),
+      participant: participant,
+      task: task,
+      outcome: outcome,
+      errors: errors,
+      help: form.querySelector('#help').value.trim(),
+      sat: Number(sat),
+      comment: form.querySelector('#comment').value.trim(),
+      observation: form.querySelector('#observation').value.trim(),
+      at: new Date().toISOString()
+    });
+    state.evalParticipant = participant;
+    saveEvals();
+    render(false);
+    announce(t('saved'));
+    var next = document.getElementById('participant');
+    if (next) next.focus();
+  }
+
+  function csvCell(v) {
+    var s = String(v === undefined || v === null ? '' : v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function downloadEvals() {
+    var en = STR.en;
+    var head = ['Participant', 'Task', 'Outcome', 'Errors', 'Help given', 'Satisfaction (1-5)', 'Reassuring or frustrating', 'Observation', 'Recorded at'];
+    var lines = [head.join(',')].concat(state.evals.map(function (r) {
+      return [r.participant, en.tasks[r.task], en.outcomes[r.outcome], r.errors, r.help, r.sat, r.comment, r.observation, r.at].map(csvCell).join(',');
+    }));
+    var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'group6-evaluation-records.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  // Two-step confirmation for destructive actions (error prevention).
+  function confirmStep(el, confirmLabel) {
+    if (el.getAttribute('data-confirm') === '1') return true;
+    el.setAttribute('data-confirm', '1');
+    var label = el.querySelector('span') || el;
+    var original = label.textContent;
+    label.textContent = confirmLabel;
+    window.setTimeout(function () {
+      if (document.body.contains(el)) {
+        el.removeAttribute('data-confirm');
+        label.textContent = original;
+      }
+    }, 4000);
+    return false;
+  }
+
   /* ---------- Toast and screen-reader announcements ---------- */
   function srAnnounce(message) {
     var el = document.getElementById('sr-status');
@@ -673,16 +1319,56 @@
     toastTimer = window.setTimeout(function () { toastEl.classList.remove('is-visible'); }, 3000);
   }
 
+  /* ---------- Account menu ---------- */
+  function setMenu(open, focusFirst) {
+    state.menuOpen = open;
+    var btn = document.getElementById('account-btn');
+    var menu = document.getElementById('account-menu');
+    if (!btn || !menu) return;
+    btn.setAttribute('aria-expanded', String(open));
+    menu.hidden = !open;
+    if (open && focusFirst) {
+      var first = menu.querySelector('.menu-item');
+      if (first) first.focus();
+    }
+  }
+
   /* ---------- Events ---------- */
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-action]');
+    if (state.menuOpen && !e.target.closest('.account')) setMenu(false);
     if (!el) return;
     var action = el.getAttribute('data-action');
-    if (action === 'lang') {
+
+    if (action === 'skip') {
+      e.preventDefault();
+      var target = document.body.dataset.route === 'list' ? document.getElementById('courses-title') : document.getElementById('view-title');
+      if (target) target.focus();
+    } else if (action === 'lang') {
       state.lang = state.lang === 'ar' ? 'en' : 'ar';
-      saveLang();
+      writeItem('local', KEY.lang, state.lang);
       render(false);
       document.getElementById('lang-toggle').focus();
+    } else if (action === 'menu') {
+      setMenu(!state.menuOpen, true);
+    } else if (action === 'close-menu') {
+      setMenu(false);
+    } else if (action === 'large') {
+      state.largeText = !state.largeText;
+      writeItem('local', KEY.large, state.largeText ? '1' : '0');
+      document.documentElement.classList.toggle('large-text', state.largeText);
+      el.setAttribute('aria-pressed', String(state.largeText));
+    } else if (action === 'signout') {
+      signOut();
+    } else if (action === 'guest') {
+      signIn(GUEST);
+    } else if (action === 'reveal') {
+      var pw = document.getElementById('password');
+      var showing = pw.type === 'text';
+      pw.type = showing ? 'password' : 'text';
+      el.textContent = showing ? t('show') : t('hide');
+      el.setAttribute('aria-label', showing ? t('showLabel') : t('hideLabel'));
+      pw.focus();
     } else if (action === 'withdraw') {
       var course = findCourse(el.getAttribute('data-course'));
       var rec = findRecord(course, el.getAttribute('data-record'));
@@ -692,14 +1378,41 @@
       var title = document.getElementById('view-title');
       if (title) title.focus({ preventScroll: true });
     } else if (action === 'reset') {
-      var keep = { lang: state.lang, testMode: state.testMode };
+      var keep = { lang: state.lang, testMode: state.testMode, user: state.user, largeText: state.largeText, evals: state.evals };
       state = seed();
       state.lang = keep.lang;
       state.testMode = keep.testMode;
-      location.hash = '#/';
-      render(true);
-      // Wait for the hash change to finish so the confirmation is not cleared by it.
+      state.user = keep.user;
+      state.largeText = keep.largeText;
+      state.evals = keep.evals;
+      state.menuOpen = false;
+      state.loginFails = 0;
+      state.evalParticipant = '';
+      go('#/');
       window.setTimeout(function () { announce(t('resetDone')); }, 80);
+    } else if (action === 'eval-download') {
+      downloadEvals();
+    } else if (action === 'eval-remove') {
+      if (!confirmStep(el, t('confirmRemove'))) return;
+      var id = el.getAttribute('data-id');
+      state.evals = state.evals.filter(function (r) { return r.id !== id; });
+      saveEvals();
+      render(false);
+      announce(t('removed'));
+    } else if (action === 'eval-clear') {
+      if (!confirmStep(el, t('confirmClear'))) return;
+      state.evals = [];
+      saveEvals();
+      render(false);
+      announce(t('cleared'));
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && state.menuOpen) {
+      setMenu(false);
+      var btn = document.getElementById('account-btn');
+      if (btn) btn.focus();
     }
   });
   document.addEventListener('change', function (e) {
