@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Attendance · CIT 1201 prototype</title>
+  <meta name="description" content="Coded prototype for CIT 1201: check how many more lectures you can miss in each course before the absence limit.">
+  <meta name="theme-color" content="#F3F5F2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-route="list">
+  <a class="skip" id="skip-link" href="#course-list">Skip to content</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
+      <div>
+        <p class="brand-name" id="brand-name">My Attendance</p>
+        <p class="brand-term" id="brand-term">Fall 2026</p>
+      </div>
+    </div>
+    <button type="button" class="btn btn--quiet lang-toggle" id="lang-toggle" data-action="lang" lang="ar">عربي</button>
+  </header>
+
+  <div class="layout">
+    <nav class="pane-list" id="course-list" tabindex="-1" aria-labelledby="courses-title"></nav>
+    <main class="pane-detail" id="main" tabindex="-1"></main>
+  </div>
+
+  <footer class="footer">
+    <p id="footer-note">Prototype for CIT 1201 with sample data only. No real student information is used.</p>
+    <div id="test-panel"></div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="visually-hidden" id="sr-status" aria-live="polite"></div>
+
+  <noscript><p class="noscript">This prototype needs JavaScript. Please enable it and reload the page.</p></noscript>
+  <script src="app.js"></script>
+</body>
+</html>
