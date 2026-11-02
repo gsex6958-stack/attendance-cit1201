@@ -1,23 +1,31 @@
 /* My Attendance by Group 6 · CIT 1201 coded prototype
-   One student journey: sign in, check the remaining absence allowance (SC1, SC2, SC5),
-   review records (SC3), understand an excuse under review (SC4) and report a wrong
-   record (SC6). Facilitators can record usability-test results on the evaluation page.
-   Sample data only. Nothing is sent anywhere; this is not real authentication. */
+   One student journey: sign in, see how many more lectures you can miss under the
+   University of Tabuk absence rules, submit an excuse for an absence and track the
+   decision, or report a record made by mistake. Facilitators can record usability-test
+   results on the evaluation page. Sample data only. Nothing is uploaded or sent
+   anywhere, and the sign-in is not real security. */
 (function () {
   'use strict';
 
   /* ---------- Settings ---------- */
-  // Change this to your university's rule (0.25 = absences allowed in up to 25% of lectures).
-  var LIMIT_RATE = 0.25;
+  // Absence rules as shown in myUT (University of Tabuk):
+  // barred if absences without an excuse exceed 20% of lectures,
+  // or if all absences (without excuse + with excuse + times late) exceed 35%.
+  var UNEXCUSED_RATE = 0.20;
+  var TOTAL_RATE = 0.35;
   // A course is "close to the limit" when this many absences or fewer are left.
   var CLOSE_AT = 2;
-  // Time the sample attendance data was last updated.
+  // Time the sample attendance data was last updated, and dates used for new excuses.
   var DATA_UPDATED = '2026-11-08T10:00:00+03:00';
+  var TODAY = '2026-11-08';
+  var DECISION_DAYS = 7;
   // Simulated network times (ms).
   var SEND_DELAY = 900;
   var SIGNIN_DELAY = 500;
   // Shared password for the Group 6 sample accounts. A prototype only: not real security.
   var PASSWORD = 'group6';
+  // Name of the simulated attachment. Nothing is uploaded.
+  var SAMPLE_FILE = 'medical-report.pdf';
 
   // Group 6 accounts. Sign in with the first name in English or Arabic.
   var ACCOUNTS = [
@@ -56,50 +64,55 @@
     } catch (e) { return false; }
   }
 
-  /* ---------- Sample data ---------- */
+  /* ---------- Sample data ----------
+     Record types: absent (without excuse), review (excuse under review: counts as
+     without excuse until decided), excused (accepted excuse), late. */
   function seed() {
     return {
       nextRef: 1042,
+      nextExcuse: 2081,
       failNext: false,
       drafts: {},
+      excuseDrafts: {},
       courses: [
         {
-          id: 'cit1201', code: 'CIT 1201', lectures: 28,
+          id: 'cit1201', code: 'CIT 1201', lectures: 30,
           name: { en: 'Human–Computer Interaction', ar: 'تفاعل الإنسان والحاسب' },
           records: [
-            { id: 'cit-5', date: '2026-11-02', type: 'counted' },
-            { id: 'cit-4', date: '2026-10-26', type: 'review', submitted: '2026-10-27', decisionBy: '2026-11-10' },
-            { id: 'cit-3', date: '2026-10-19', type: 'counted' },
+            { id: 'cit-5', date: '2026-11-02', type: 'absent' },
+            { id: 'cit-4', date: '2026-10-26', type: 'review', excuse: { ref: 'EX-2077', reason: 'medical', file: SAMPLE_FILE, submitted: '2026-10-27', decisionBy: '2026-11-10' } },
+            { id: 'cit-3', date: '2026-10-19', type: 'absent' },
             { id: 'cit-2', date: '2026-10-12', type: 'excused' },
-            { id: 'cit-1', date: '2026-10-05', type: 'counted' }
+            { id: 'cit-1', date: '2026-10-05', type: 'late' }
           ]
         },
         {
-          id: 'math1050', code: 'MATH 1050', lectures: 28,
+          id: 'math1050', code: 'MATH 1050', lectures: 30,
           name: { en: 'Calculus I', ar: 'التفاضل والتكامل ١' },
           records: [
-            { id: 'math-6', date: '2026-11-03', type: 'counted' },
-            { id: 'math-5', date: '2026-10-27', type: 'counted' },
-            { id: 'math-4', date: '2026-10-20', type: 'counted' },
-            { id: 'math-3', date: '2026-10-13', type: 'counted' },
-            { id: 'math-2', date: '2026-10-06', type: 'counted' },
-            { id: 'math-1', date: '2026-09-29', type: 'counted' }
+            { id: 'math-5', date: '2026-11-03', type: 'absent' },
+            { id: 'math-4', date: '2026-10-27', type: 'absent' },
+            { id: 'math-3', date: '2026-10-20', type: 'absent' },
+            { id: 'math-2', date: '2026-10-13', type: 'absent' },
+            { id: 'math-1', date: '2026-10-06', type: 'absent' }
           ]
         },
         {
-          id: 'engl1101', code: 'ENGL 1101', lectures: 28,
+          id: 'engl1101', code: 'ENGL 1101', lectures: 30,
           name: { en: 'English Communication I', ar: 'مهارات الاتصال باللغة الإنجليزية ١' },
           records: [
-            { id: 'engl-1', date: '2026-10-14', type: 'counted' }
+            { id: 'engl-3', date: '2026-10-28', type: 'late' },
+            { id: 'engl-2', date: '2026-10-14', type: 'absent' },
+            { id: 'engl-1', date: '2026-09-30', type: 'late' }
           ]
         },
         {
-          id: 'stat1010', code: 'STAT 1010', lectures: 14,
+          id: 'stat1010', code: 'STAT 1010', lectures: 15,
           name: { en: 'Introduction to Statistics', ar: 'مبادئ الإحصاء' },
           records: [
-            { id: 'stat-3', date: '2026-10-28', type: 'counted' },
-            { id: 'stat-2', date: '2026-10-21', type: 'counted' },
-            { id: 'stat-1', date: '2026-10-07', type: 'counted' }
+            { id: 'stat-3', date: '2026-10-28', type: 'absent' },
+            { id: 'stat-2', date: '2026-10-21', type: 'absent' },
+            { id: 'stat-1', date: '2026-10-07', type: 'absent' }
           ]
         }
       ]
@@ -140,6 +153,11 @@
   function locale() { return state.lang === 'ar' ? 'ar-u-ca-gregory-nu-arab' : 'en-GB'; }
   function num(n) { return new Intl.NumberFormat(state.lang === 'ar' ? 'ar-u-nu-arab' : 'en-GB').format(n); }
   function asDate(iso) { return new Date(iso + 'T00:00:00Z'); }
+  function addDays(iso, days) {
+    var d = asDate(iso);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
   function fmtDate(iso, style) {
     var opts = style === 'long'
       ? { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }
@@ -178,6 +196,10 @@
     return num(n) + ' محاضرة';
   }
   function arMore(n) { return n === 2 ? 'أخريين' : 'أخرى'; }
+  function enList(parts) {
+    if (parts.length <= 1) return parts.join('');
+    return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+  }
 
   var STR = {
     en: {
@@ -188,7 +210,7 @@
       skip: 'Skip to content',
 
       /* Sign in */
-      loginStatement: 'Know how many more lectures you can miss, before it is too late.',
+      loginStatement: 'Know how many more lectures you can miss, and get your excuse counted in time.',
       loginTitle: 'Sign in',
       loginIntro: 'Use your Group 6 account to see your courses.',
       username: 'Username',
@@ -207,7 +229,7 @@
       errWrongHelp: 'Still not working? Use the sample student account below, or ask a Group 6 member for the password.',
       or: 'or',
       guestButton: 'Try the sample student account',
-      loginNote: 'This prototype is not connected to any university system. Never enter your university password here.',
+      loginNote: 'A Group 6 student design project. It is not a University of Tabuk service, so never enter your university password here.',
       aboutLink: 'About this prototype',
       welcome: function (name) { return name ? 'Signed in as ' + name : 'Signed in with the sample account'; },
 
@@ -220,7 +242,7 @@
       signedOut: 'You are signed out',
 
       /* Courses */
-      term: 'Fall 2026',
+      term: 'First semester 2026',
       coursesTitle: 'Your courses',
       hello: function (name) { return name ? 'Hello, ' + name + '.' : 'Hello.'; },
       coursesIntro: 'Here is how many more lectures you can miss in each course this semester.',
@@ -235,49 +257,97 @@
         if (n === 1) return 'You can miss 1 more lecture';
         return 'You can miss ' + n + ' more lectures';
       },
-      usedOf: function (u, l) { return u + ' of ' + l + ' allowed absences used.'; },
-      includesReview: function (n) { return n === 1 ? 'This includes 1 excuse under review.' : 'This includes ' + n + ' excuses under review.'; },
-      stripLabel: function (c, r, left) { return c + ' counted, ' + r + ' under review, ' + left + ' left'; },
-      legend: { counted: 'Counted', review: 'Under review', left: 'Left' },
+      bindingUnexcused: 'Counted against the limit for absences without an excuse.',
+      bindingTotal: 'Counted against the limit for all absences, which includes excused absences and lateness.',
+      unexcusedLine: function (u, l) { return 'Without an excuse: ' + u + ' of ' + l + ' allowed absences used.'; },
+      totalLine: function (u, l) { return 'All absences: ' + u + ' of ' + l + ' allowed used.'; },
+      breakdown: function (c) {
+        var parts = [];
+        if (c.absent) parts.push(c.absent + ' without excuse');
+        if (c.review) parts.push(c.review + ' under review');
+        if (c.excused) parts.push(c.excused + ' excused');
+        if (c.late) parts.push(c.late + ' late');
+        return parts.length ? 'That is ' + enList(parts) + '.' : '';
+      },
+      withExcuseHint: function (n) { return 'With accepted excuses, you could miss up to ' + n + ' more in total.'; },
+      includesReview: function (n) { return n === 1 ? '1 excuse is under review and counts as without an excuse until it is decided.' : n + ' excuses are under review and count as without an excuse until they are decided.'; },
+      stripLabel: function (a, r, left) { return 'Without an excuse: ' + a + ' counted, ' + r + ' under review, ' + left + ' left'; },
+      meterLabel: function (u, l) { return 'All absences: ' + u + ' of ' + l + ' used'; },
+      legend: { absent: 'Without excuse', review: 'Under review', excused: 'Excused', late: 'Late', left: 'Left' },
+      unexcusedTitle: 'Without an excuse',
+      totalTitle: 'All absences',
       seeRecords: 'See absence records',
       howTitle: 'How is this worked out?',
-      howBody: function (rate, total, limit) {
+      howBody: function (total, unexLimit, totalLimit) {
         return [
-          'Your university allows absences in up to ' + rate + '% of lectures. This course has ' + total + ' lectures, so you can be absent from ' + limit + '.',
-          'Absences with an accepted excuse do not count. An excuse under review counts until your lecturer decides.'
+          'The University of Tabuk bars a student from a course if absences without an excuse exceed 20% of lectures, or if all absences exceed 35%. All absences means absences without an excuse, plus absences with an excuse, plus the number of times late.',
+          'This course has ' + total + ' lectures, so you can be absent without an excuse up to ' + unexLimit + ' times, and up to ' + totalLimit + ' times in total.',
+          'An excuse under review counts as without an excuse until the committee decides.'
         ];
       },
-      closeTitle: 'Talk to your advisor before your next absence',
+      closeTitle: 'Act before your next absence',
       closeBody: function (n) {
-        return n === 1
-          ? 'One more absence uses your whole allowance. Your academic advisor can help you plan, or check whether an excuse applies.'
-          : 'Two more absences use your whole allowance. Your academic advisor can help you plan, or check whether an excuse applies.';
+        return (n === 1 ? 'One more absence without an excuse uses your whole allowance.' : 'Two more absences without an excuse use your whole allowance.') +
+          ' If you had a valid reason for a recent absence, submit an excuse now. Your academic advisor can also help you plan.';
       },
-      limitTitle: 'You have used all your allowed absences',
-      limitBody: 'Another absence may bar you from the final exam. Contact your academic advisor today.',
+      limitTitle: 'You have no absences left',
+      limitBody: 'Another absence without an excuse may bar you from the final exam. If you had a valid reason for a recent absence, submit an excuse now and contact your academic advisor today.',
       advisorHours: 'Academic advising office: Sunday to Thursday, 8:00 to 14:00.',
+      calloutAction: 'Submit an excuse from your absence records',
 
-      /* Records, excuse, report */
+      /* Records */
       recordsTitle: 'Absence records',
-      recordsIntro: function (code) { return 'Every recorded absence in ' + code + ', newest first.'; },
-      type: { counted: 'Counted', excused: 'Excused, not counted', review: 'Excuse under review' },
-      viewExcuse: 'View excuse',
-      somethingWrong: 'Something wrong with this record?',
+      recordsIntro: function (code) { return 'Every absence and late arrival recorded in ' + code + ', newest first.'; },
+      type: { absent: 'Without excuse', excused: 'Excused', review: 'Excuse under review', late: 'Late' },
+      submitExcuseLink: 'Submit an excuse',
+      trackLink: 'Track excuse',
+      mistake: 'Recorded by mistake?',
       reportSentLine: function (ref) { return 'Report sent, reference ' + ref + '. Your lecturer will review it.'; },
       withdraw: 'Withdraw report',
       withdrawn: 'Report withdrawn',
       backRecords: 'Absence records',
+
+      /* Submit an excuse */
+      excuseFormTitle: 'Submit an excuse',
+      excuseFormIntro: 'Your lecturer and the excuses committee will review it. You can follow the decision here.',
+      reasonLegend: 'Reason for the absence',
+      excuseReasons: { medical: 'Medical', family: 'Family emergency', official: 'Official university activity', other: 'Other' },
+      docLabel: 'Supporting document',
+      docHint: 'For example a medical report or an official letter.',
+      attach: 'Attach document',
+      sampleNote: 'Sample file. Nothing is uploaded in this prototype.',
+      removeFile: 'Remove',
+      fileRemoved: 'Document removed',
+      excuseNoteLabel: 'Note for the committee (optional)',
+      excusePrivacy: 'Your lecturer and the excuses committee will see this excuse and its document.',
+      submitExcuse: 'Submit excuse',
+      submittingExcuse: 'Submitting excuse…',
+      errReason: 'Choose the reason for the absence.',
+      errDoc: 'Attach a supporting document.',
+      errExcuseSend: 'The excuse was not submitted. Check your connection and submit it again. Your answers are kept.',
+      excuseSentTitle: 'Excuse submitted',
+      excuseSentLead: function (d) { return 'The excuses committee should decide by ' + d + '. Until then, this absence counts as without an excuse.'; },
+      trackExcuse: 'Track this excuse',
+
+      /* Excuse status */
       excuseTitle: 'Excuse under review',
+      excuseLead: 'You do not need to do anything now. It counts as an absence without an excuse until the committee decides.',
+      stepSent: 'Excuse submitted',
+      stepReview: 'Review by the excuses committee',
+      stepDecision: 'Decision',
+      inProgress: 'In progress',
+      expectedBy: function (d) { return 'Expected by ' + d; },
       absenceOn: 'Absence on',
-      submittedOn: 'Excuse sent',
-      decisionBy: 'Decision expected by',
-      excuseLead: 'It counts as an absence until your lecturer decides.',
+      reasonLabel: 'Reason',
+      reference: 'Reference',
       ifAccepted: function (n) { return 'If accepted: ' + STR.en.canMiss(n).replace('You can', 'you can') + '.'; },
       ifRejected: function (n) { return 'If not accepted: no change, ' + STR.en.canMiss(n).replace('You can', 'you can') + '.'; },
-      reportTitle: 'Report a wrong record',
+
+      /* Report a record made by mistake */
+      reportTitle: 'Report a record made by mistake',
       reportIntro: 'Tell your lecturer what is wrong. The record stays as it is until they review it.',
       whatWrong: 'What is wrong with this record?',
-      reasons: { attended: 'I attended this lecture', late: 'I was late, not absent', other: 'Something else' },
+      reasons: { attended: 'I attended this lecture on time', late: 'I was late, not absent', other: 'Something else' },
       noteLabel: 'Details for your lecturer (optional)',
       noteHint: function (n) { return n + ' of 200 characters'; },
       privacy: 'Your lecturer will see this report.',
@@ -287,7 +357,6 @@
       errChoose: 'Choose what is wrong with this record.',
       errSend: 'The report was not sent. Check your connection and send it again. Your answers are kept.',
       sentTitle: 'Report sent',
-      reference: 'Reference',
       course: 'Course',
       record: 'Record',
       sentNext: 'Your lecturer will review it within 3 working days. The absence still counts until then.',
@@ -295,9 +364,9 @@
 
       /* About */
       aboutTitle: 'About this prototype',
-      aboutBody: 'My Attendance helps a student see how many more lectures they can miss in a course before the absence limit, and what to do about it. Group 6 designed it and is testing it with students for CIT 1201 Human–Computer Interaction.',
+      aboutBody: 'My Attendance helps a University of Tabuk student see how many more lectures they can miss before being barred, submit an excuse for an absence and follow the decision in one place. Group 6 designed it for CIT 1201 Human–Computer Interaction, using the absence rules shown in myUT.',
       teamTitle: 'Group 6',
-      dataNote: 'All courses, dates and absences are sample data. The prototype is not connected to any university system.',
+      dataNote: 'All courses, dates, absences and excuses are sample data. This is a student design project, not a university service, and it is not connected to any university system.',
       backSignIn: 'Sign in',
 
       /* Evaluation record */
@@ -308,7 +377,7 @@
       participant: 'Participant code',
       choose: 'Choose',
       task: 'Task',
-      tasks: { T1: 'T1 Remaining absences', T2: 'T2 Excuse under review', T3: 'T3 Report a wrong record' },
+      tasks: { T1: 'T1 Remaining absences', T2: 'T2 Submit an excuse', T3: 'T3 Track an excuse' },
       outcome: 'Outcome',
       outcomes: { success: 'Success without help', helped: 'Success with help', failed: 'Not completed' },
       errors: 'Errors',
@@ -344,7 +413,7 @@
       footer: 'Designed by Group 6 for CIT 1201. Sample data only; no real student information is used.',
       testTitle: 'Test settings for the facilitator',
       reset: 'Reset sample data',
-      failNext: 'Make the next report fail to send',
+      failNext: 'Make the next submission fail',
       resetDone: 'Sample data reset',
       docTitle: function (t) { return t + ' · My Attendance'; }
     },
@@ -355,7 +424,7 @@
       langButtonLang: 'en',
       skip: 'تخطَّ إلى المحتوى',
 
-      loginStatement: 'اعرف كم محاضرة تقدر تغيب عنها بعد، قبل فوات الأوان.',
+      loginStatement: 'اعرف كم محاضرة تقدر تغيب عنها بعد، وخلّ عذرك ينحسب في وقته.',
       loginTitle: 'تسجيل الدخول',
       loginIntro: 'ادخل بحساب المجموعة ٦ لترى مقرراتك.',
       username: 'اسم المستخدم',
@@ -374,7 +443,7 @@
       errWrongHelp: 'ما زالت المشكلة؟ ادخل بحساب الطالب التجريبي أدناه، أو اطلب كلمة المرور من أحد أعضاء المجموعة ٦.',
       or: 'أو',
       guestButton: 'جرّب حساب الطالب التجريبي',
-      loginNote: 'هذا النموذج غير مرتبط بأي نظام جامعي. لا تُدخل كلمة مرور الجامعة هنا أبداً.',
+      loginNote: 'مشروع تصميم طلابي من المجموعة ٦، وليس خدمة من جامعة تبوك. لا تُدخل كلمة مرور الجامعة هنا أبداً.',
       aboutLink: 'عن هذا النموذج',
       welcome: function (name) { return name ? 'تم الدخول باسم ' + name : 'تم الدخول بالحساب التجريبي'; },
 
@@ -391,7 +460,7 @@
       coursesIntro: 'هذا عدد المحاضرات التي يمكنك الغياب عنها بعد في كل مقرر هذا الفصل.',
       updated: function (d) { return 'آخر تحديث للحضور ' + d; },
       left: function (n) { return 'المتبقي ' + num(n); },
-      reviewCount: function (n) { return n === 1 ? 'عذر واحد قيد المراجعة' : num(n) + ' أعذار قيد المراجعة'; },
+      reviewCount: function (n) { return n === 1 ? 'عذر واحد قيد المراجعة' : n === 2 ? 'عذران قيد المراجعة' : num(n) + ' أعذار قيد المراجعة'; },
       emptyDetail: 'اختر مقرراً لترى عدد المحاضرات التي يمكنك الغياب عنها بعد.',
       backCourses: 'مقرراتي',
       status: { safe: 'آمن', close: 'قريب من الحد', limit: 'لا يوجد غياب متبقٍ' },
@@ -399,48 +468,93 @@
         if (n <= 0) return 'لا يمكنك الغياب عن أي محاضرة أخرى';
         return 'يمكنك الغياب عن ' + arLectures(n) + ' ' + arMore(n);
       },
-      usedOf: function (u, l) { return 'استخدمت ' + num(u) + ' من ' + num(l) + ' غيابات مسموحة.'; },
-      includesReview: function (n) { return n === 1 ? 'يشمل ذلك عذراً واحداً قيد المراجعة.' : 'يشمل ذلك ' + num(n) + ' أعذار قيد المراجعة.'; },
-      stripLabel: function (c, r, left) { return 'محسوب ' + num(c) + '، قيد المراجعة ' + num(r) + '، المتبقي ' + num(left); },
-      legend: { counted: 'محسوب', review: 'قيد المراجعة', left: 'متبقٍ' },
+      bindingUnexcused: 'محسوبة على حد الغياب بدون عذر.',
+      bindingTotal: 'محسوبة على حد إجمالي الغياب، ويشمل الغياب بعذر والتأخير.',
+      unexcusedLine: function (u, l) { return 'بدون عذر: استخدمت ' + num(u) + ' من ' + num(l) + ' غيابات مسموحة.'; },
+      totalLine: function (u, l) { return 'إجمالي الغياب: استخدمت ' + num(u) + ' من ' + num(l) + '.'; },
+      breakdown: function (c) {
+        var parts = [];
+        if (c.absent) parts.push(num(c.absent) + ' بدون عذر');
+        if (c.review) parts.push(num(c.review) + ' قيد المراجعة');
+        if (c.excused) parts.push(num(c.excused) + ' بعذر');
+        if (c.late) parts.push(num(c.late) + ' تأخير');
+        return parts.length ? 'منها ' + parts.join('، ') + '.' : '';
+      },
+      withExcuseHint: function (n) { return 'مع أعذار مقبولة، يمكنك الغياب حتى ' + arLectures(n) + ' ' + arMore(n) + ' في الإجمالي.'; },
+      includesReview: function (n) { return n === 1 ? 'عذر واحد قيد المراجعة، ويُحسب بدون عذر حتى يصدر القرار.' : n === 2 ? 'عذران قيد المراجعة، ويُحسبان بدون عذر حتى يصدر القرار.' : num(n) + ' أعذار قيد المراجعة، وتُحسب بدون عذر حتى يصدر القرار.'; },
+      stripLabel: function (a, r, left) { return 'بدون عذر: محسوب ' + num(a) + '، قيد المراجعة ' + num(r) + '، المتبقي ' + num(left); },
+      meterLabel: function (u, l) { return 'إجمالي الغياب: ' + num(u) + ' من ' + num(l); },
+      legend: { absent: 'بدون عذر', review: 'قيد المراجعة', excused: 'بعذر', late: 'تأخير', left: 'متبقٍ' },
+      unexcusedTitle: 'الغياب بدون عذر',
+      totalTitle: 'إجمالي الغياب',
       seeRecords: 'عرض سجل الغياب',
       howTitle: 'كيف يُحسب هذا؟',
-      howBody: function (rate, total, limit) {
+      howBody: function (total, unexLimit, totalLimit) {
         return [
-          'تسمح الجامعة بالغياب عن ' + num(rate) + '٪ من المحاضرات كحد أقصى. هذا المقرر فيه ' + num(total) + ' محاضرة، لذلك يمكنك الغياب عن ' + num(limit) + '.',
-          'الغياب بعذر مقبول لا يُحسب. العذر قيد المراجعة يُحسب حتى يقرر أستاذ المقرر.'
+          'في جامعة تبوك يُحرم الطالب من المقرر إذا تجاوز غيابه بدون عذر ٢٠٪ من المحاضرات، أو إذا تجاوز إجمالي غيابه ٣٥٪. إجمالي الغياب = الغياب بدون عذر + الغياب بعذر + عدد مرات التأخير.',
+          'هذا المقرر فيه ' + num(total) + ' محاضرة، لذلك يمكنك الغياب بدون عذر حتى ' + num(unexLimit) + ' مرات، وحتى ' + num(totalLimit) + ' مرات في الإجمالي.',
+          'العذر قيد المراجعة يُحسب بدون عذر حتى تقرر اللجنة.'
         ];
       },
-      closeTitle: 'تواصل مع مرشدك الأكاديمي قبل غيابك القادم',
+      closeTitle: 'تصرّف قبل غيابك القادم',
       closeBody: function (n) {
-        return n === 1
-          ? 'غياب واحد آخر يستنفد رصيدك كاملاً. يستطيع مرشدك الأكاديمي مساعدتك في التخطيط أو التحقق من وجود عذر مناسب.'
-          : 'غيابان آخران يستنفدان رصيدك كاملاً. يستطيع مرشدك الأكاديمي مساعدتك في التخطيط أو التحقق من وجود عذر مناسب.';
+        return (n === 1 ? 'غياب واحد آخر بدون عذر يستنفد رصيدك كاملاً.' : 'غيابان آخران بدون عذر يستنفدان رصيدك كاملاً.') +
+          ' إذا كان عندك عذر مقبول لغياب سابق فقدّمه الآن. ويستطيع مرشدك الأكاديمي مساعدتك في التخطيط.';
       },
-      limitTitle: 'استخدمت كل الغيابات المسموحة',
-      limitBody: 'أي غياب إضافي قد يحرمك من الاختبار النهائي. تواصل مع مرشدك الأكاديمي اليوم.',
+      limitTitle: 'لم يبقَ لك غياب',
+      limitBody: 'أي غياب إضافي بدون عذر قد يحرمك من الاختبار النهائي. إذا كان عندك عذر مقبول لغياب سابق فقدّمه الآن، وتواصل مع مرشدك الأكاديمي اليوم.',
       advisorHours: 'مكتب الإرشاد الأكاديمي: من الأحد إلى الخميس، من ٨:٠٠ إلى ١٤:٠٠.',
+      calloutAction: 'قدّم عذراً من سجل الغياب',
 
       recordsTitle: 'سجل الغياب',
-      recordsIntro: function (code) { return 'كل غياب مسجّل في ' + code + '، الأحدث أولاً.'; },
-      type: { counted: 'محسوب', excused: 'بعذر، غير محسوب', review: 'عذر قيد المراجعة' },
-      viewExcuse: 'عرض العذر',
-      somethingWrong: 'هل يوجد خطأ في هذا السجل؟',
+      recordsIntro: function (code) { return 'كل غياب وتأخير مسجّل في ' + code + '، الأحدث أولاً.'; },
+      type: { absent: 'بدون عذر', excused: 'بعذر مقبول', review: 'عذر قيد المراجعة', late: 'تأخير' },
+      submitExcuseLink: 'تقديم عذر',
+      trackLink: 'متابعة العذر',
+      mistake: 'مسجّل بالخطأ؟',
       reportSentLine: function (ref) { return 'تم إرسال البلاغ، المرجع ' + ref + '. سيراجعه أستاذ المقرر.'; },
       withdraw: 'سحب البلاغ',
       withdrawn: 'تم سحب البلاغ',
       backRecords: 'سجل الغياب',
+
+      excuseFormTitle: 'تقديم عذر',
+      excuseFormIntro: 'يراجعه أستاذ المقرر ولجنة الأعذار، وتتابع القرار من هنا.',
+      reasonLegend: 'سبب الغياب',
+      excuseReasons: { medical: 'طبي', family: 'ظرف عائلي طارئ', official: 'مهمة رسمية للجامعة', other: 'سبب آخر' },
+      docLabel: 'المستند المؤيد',
+      docHint: 'مثل تقرير طبي أو خطاب رسمي.',
+      attach: 'إرفاق مستند',
+      sampleNote: 'ملف تجريبي. لا يُرفع أي شيء في هذا النموذج.',
+      removeFile: 'إزالة',
+      fileRemoved: 'تمت إزالة المستند',
+      excuseNoteLabel: 'ملاحظة للجنة (اختياري)',
+      excusePrivacy: 'سيطّلع أستاذ المقرر ولجنة الأعذار على هذا العذر ومستنده.',
+      submitExcuse: 'تقديم العذر',
+      submittingExcuse: 'جارٍ تقديم العذر…',
+      errReason: 'اختر سبب الغياب.',
+      errDoc: 'أرفق المستند المؤيد.',
+      errExcuseSend: 'لم يُقدَّم العذر. تحقق من الاتصال وأعد التقديم، إجاباتك محفوظة.',
+      excuseSentTitle: 'تم تقديم العذر',
+      excuseSentLead: function (d) { return 'يُتوقع قرار لجنة الأعذار قبل ' + d + '. وحتى ذلك الحين يُحسب هذا الغياب بدون عذر.'; },
+      trackExcuse: 'متابعة هذا العذر',
+
       excuseTitle: 'عذر قيد المراجعة',
+      excuseLead: 'لا تحتاج تسوي شيء الآن. يُحسب غياباً بدون عذر حتى تقرر اللجنة.',
+      stepSent: 'تم تقديم العذر',
+      stepReview: 'مراجعة لجنة الأعذار',
+      stepDecision: 'القرار',
+      inProgress: 'جارٍ الآن',
+      expectedBy: function (d) { return 'متوقع قبل ' + d; },
       absenceOn: 'تاريخ الغياب',
-      submittedOn: 'تاريخ إرسال العذر',
-      decisionBy: 'القرار متوقع قبل',
-      excuseLead: 'يُحسب غياباً حتى يقرر أستاذ المقرر.',
+      reasonLabel: 'السبب',
+      reference: 'المرجع',
       ifAccepted: function (n) { return 'إذا قُبل: ' + STR.ar.canMiss(n) + '.'; },
       ifRejected: function (n) { return 'إذا لم يُقبل: لا تغيير، ' + STR.ar.canMiss(n) + '.'; },
-      reportTitle: 'الإبلاغ عن سجل خاطئ',
+
+      reportTitle: 'الإبلاغ عن سجل مسجّل بالخطأ',
       reportIntro: 'أخبر أستاذ المقرر بالخطأ. يبقى السجل كما هو حتى يراجعه.',
       whatWrong: 'ما الخطأ في هذا السجل؟',
-      reasons: { attended: 'حضرت هذه المحاضرة', late: 'تأخرت ولم أغب', other: 'سبب آخر' },
+      reasons: { attended: 'حضرت هذه المحاضرة في وقتها', late: 'تأخرت ولم أغب', other: 'سبب آخر' },
       noteLabel: 'تفاصيل لأستاذ المقرر (اختياري)',
       noteHint: function (n) { return num(n) + ' من ٢٠٠ حرف'; },
       privacy: 'سيطّلع أستاذ المقرر على هذا البلاغ.',
@@ -450,16 +564,15 @@
       errChoose: 'اختر الخطأ في هذا السجل.',
       errSend: 'لم يُرسل البلاغ. تحقق من الاتصال وأعد الإرسال، إجاباتك محفوظة.',
       sentTitle: 'تم إرسال البلاغ',
-      reference: 'المرجع',
       course: 'المقرر',
       record: 'السجل',
       sentNext: 'سيراجعه أستاذ المقرر خلال ٣ أيام عمل، ويبقى الغياب محسوباً حتى ذلك الحين.',
       backToRecords: 'العودة إلى سجل الغياب',
 
       aboutTitle: 'عن هذا النموذج',
-      aboutBody: 'يساعد «حضوري» الطالب على معرفة عدد المحاضرات التي يمكنه الغياب عنها في مقرر قبل الوصول لحد الحرمان، وماذا يفعل حيال ذلك. صممته المجموعة ٦ وتختبره مع الطلاب ضمن مقرر CIT 1201 تفاعل الإنسان والحاسب.',
+      aboutBody: 'يساعد «حضوري» طالب جامعة تبوك على معرفة عدد المحاضرات التي يمكنه الغياب عنها قبل الحرمان، وتقديم عذر لغيابه ومتابعة القرار في مكان واحد. صممته المجموعة ٦ لمقرر CIT 1201 تفاعل الإنسان والحاسب، بناءً على قواعد الغياب المعروضة في myUT.',
       teamTitle: 'المجموعة ٦',
-      dataNote: 'كل المقررات والتواريخ والغيابات بيانات تجريبية، والنموذج غير مرتبط بأي نظام جامعي.',
+      dataNote: 'كل المقررات والتواريخ والغيابات والأعذار بيانات تجريبية. هذا مشروع تصميم طلابي وليس خدمة جامعية، وغير مرتبط بأي نظام جامعي.',
       backSignIn: 'تسجيل الدخول',
 
       evalTitle: 'سجل التقييم',
@@ -469,7 +582,7 @@
       participant: 'رمز المشارك',
       choose: 'اختر',
       task: 'المهمة',
-      tasks: { T1: 'T1 الغياب المتبقي', T2: 'T2 العذر قيد المراجعة', T3: 'T3 الإبلاغ عن سجل خاطئ' },
+      tasks: { T1: 'T1 الغياب المتبقي', T2: 'T2 تقديم عذر', T3: 'T3 متابعة عذر' },
       outcome: 'النتيجة',
       outcomes: { success: 'نجح دون مساعدة', helped: 'نجح بمساعدة', failed: 'لم يُكمل' },
       errors: 'الأخطاء',
@@ -504,7 +617,7 @@
       footer: 'من تصميم المجموعة ٦ لمقرر CIT 1201. بيانات تجريبية فقط، ولا يستخدم أي بيانات حقيقية للطلاب.',
       testTitle: 'إعدادات الاختبار للميسّر',
       reset: 'إعادة البيانات التجريبية',
-      failNext: 'اجعل البلاغ التالي يفشل في الإرسال',
+      failNext: 'اجعل الإرسال التالي يفشل',
       resetDone: 'تمت إعادة البيانات التجريبية',
       docTitle: function (t) { return t + ' · حضوري'; }
     }
@@ -524,8 +637,9 @@
     close: svg('<path d="M12 3.6L21.4 20H2.6z"/><path d="M12 10v4.4"/><path d="M12 17.2v.3"/>'),
     limit: svg('<path d="M8.3 3h7.4L21 8.3v7.4L15.7 21H8.3L3 15.7V8.3z"/><path d="M9.4 9.4l5.2 5.2M14.6 9.4l-5.2 5.2"/>'),
     review: svg('<path d="M7 3h10M7 21h10"/><path d="M8 3v3.6L12 12l4-5.4V3M8 21v-3.6L12 12l4 5.4V21"/>'),
-    counted: svg('<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9.5 13.5l5 5M14.5 13.5l-5 5"/>'),
+    absent: svg('<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9.5 13.5l5 5M14.5 13.5l-5 5"/>'),
     excused: svg('<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 15.3l2.2 2.2 4.2-4.3"/>'),
+    late: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 2"/>'),
     flag: svg('<path d="M6 21V4M6 4h11.5l-2.4 4 2.4 4H6"/>'),
     back: svg('<path d="M15 5l-7 7 7 7"/>', 'ico--flip'),
     chevron: svg('<path d="M9 5l7 7-7 7"/>'),
@@ -540,29 +654,37 @@
     clipboard: svg('<rect x="5" y="4.5" width="14" height="16.5" rx="2.5"/><path d="M9 4.5h6v3H9zM8.5 12h7M8.5 16h5"/>'),
     signout: svg('<path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M10 16l-4-4 4-4M6 12h10"/>', 'ico--flip'),
     download: svg('<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14"/>'),
-    trash: svg('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>')
+    trash: svg('<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>'),
+    clip: svg('<path d="M15.5 7.5l-6.4 6.4a1.8 1.8 0 0 0 2.5 2.5l6.7-6.7a3.6 3.6 0 0 0-5.1-5.1l-6.9 6.9a5.4 5.4 0 0 0 7.6 7.6l5.6-5.6"/>'),
+    file: svg('<path d="M14 3.5H7.5A1.5 1.5 0 0 0 6 5v14a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 18 19V7.5z"/><path d="M14 3.5v4h4"/>')
   };
   var LOGO = '<svg class="logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">' +
     '<path d="M24 3 42.2 13.5v21L24 45 5.8 34.5v-21z" fill="#0F5F59"/>' +
     '<path d="M24 9.6 36.5 16.8v14.4L24 38.4 11.5 31.2V16.8z" fill="none" stroke="#8CCBC0" stroke-width="1.4"/>' +
     '<text x="24" y="30.6" text-anchor="middle" font-family="Readex Pro, system-ui, sans-serif" font-size="17" font-weight="600" fill="#FFFFFF">6</text></svg>';
 
-  /* ---------- Calculations ---------- */
+  /* ---------- Calculations (University of Tabuk rules) ---------- */
   function summary(course) {
-    var limit = Math.floor(course.lectures * LIMIT_RATE);
-    var counted = 0, review = 0;
-    course.records.forEach(function (r) {
-      if (r.type === 'counted') counted += 1;
-      if (r.type === 'review') review += 1;
-    });
-    var used = counted + review;
-    var left = Math.max(0, limit - used);
-    var status = left <= 0 ? 'limit' : left <= CLOSE_AT ? 'close' : 'safe';
-    return { limit: limit, counted: counted, review: review, used: used, left: left, status: status };
+    var unexLimit = Math.floor(course.lectures * UNEXCUSED_RATE + 1e-9);
+    var totalLimit = Math.floor(course.lectures * TOTAL_RATE + 1e-9);
+    var c = { absent: 0, review: 0, excused: 0, late: 0 };
+    course.records.forEach(function (r) { c[r.type] += 1; });
+    var unexUsed = c.absent + c.review;
+    var totalUsed = unexUsed + c.excused + c.late;
+    var unexLeft = Math.max(0, unexLimit - unexUsed);
+    var totalLeft = Math.max(0, totalLimit - totalUsed);
+    var left = Math.min(unexLeft, totalLeft);
+    return {
+      counts: c, unexLimit: unexLimit, totalLimit: totalLimit,
+      unexUsed: unexUsed, totalUsed: totalUsed, unexLeft: unexLeft, totalLeft: totalLeft,
+      left: left,
+      binding: totalLeft < unexLeft ? 'total' : 'unexcused',
+      status: left <= 0 ? 'limit' : left <= CLOSE_AT ? 'close' : 'safe'
+    };
   }
-  function usedLeaves(course) {
-    return course.records.filter(function (r) { return r.type === 'counted' || r.type === 'review'; })
-      .slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  // Remaining allowance if one excuse under review is accepted.
+  function leftIfAccepted(s) {
+    return Math.max(0, Math.min(s.unexLimit - (s.unexUsed - 1), s.totalLeft));
   }
   var STATUS_ORDER = { limit: 0, close: 1, safe: 2 };
 
@@ -579,14 +701,22 @@
     if (!p[3]) return { name: 'records', course: course };
     var rec = findRecord(course, p[3]);
     if (!rec) return { name: 'records', course: course };
-    if (p[4] === 'report') {
-      if (p[5] === 'sent' && rec.report) return { name: 'sent', course: course, rec: rec };
-      if (rec.report || rec.type === 'excused') return { name: 'records', course: course };
-      return { name: 'report', course: course, rec: rec };
+    var base = { course: course, rec: rec };
+    if (p[4] === 'excuse') {
+      if (p[5] === 'sent' && rec.type === 'review') return assign(base, 'excuseSent');
+      if (rec.type === 'absent' && !rec.report) return assign(base, 'excuseForm');
+      if (rec.type === 'review') return assign(base, 'excuseStatus');
+      return { name: 'records', course: course };
     }
-    if (rec.type === 'review') return { name: 'excuse', course: course, rec: rec };
+    if (p[4] === 'report') {
+      if (p[5] === 'sent' && rec.report) return assign(base, 'sent');
+      if (!rec.report && (rec.type === 'absent' || rec.type === 'late')) return assign(base, 'report');
+      return { name: 'records', course: course };
+    }
+    if (rec.type === 'review') return assign(base, 'excuseStatus');
     return { name: 'records', course: course };
   }
+  function assign(base, name) { base.name = name; return base; }
   function routeKind(name) {
     if (name === 'login') return 'login';
     if (name === 'about' || name === 'evaluation') return 'page';
@@ -602,7 +732,10 @@
 
   /* ---------- Pieces ---------- */
   function chip(kind, label) {
-    var icon = { safe: ICON.safe, close: ICON.close, limit: ICON.limit, review: ICON.review, counted: ICON.counted, excused: ICON.excused }[kind];
+    var icon = {
+      safe: ICON.safe, close: ICON.close, limit: ICON.limit, review: ICON.review,
+      absent: ICON.absent, excused: ICON.excused, late: ICON.late
+    }[kind];
     return '<span class="chip chip--' + kind + '">' + icon + '<span>' + esc(label) + '</span></span>';
   }
   function outcomeChip(outcome) {
@@ -621,18 +754,23 @@
   function fieldError(id, message) {
     return '<p class="field-error" id="' + id + '">' + ICON.alert + '<span>' + esc(message) + '</span></p>';
   }
+  function recordCard(course, rec) {
+    return '<div class="record-card"><span><strong>' + esc(course.code) + '</strong> · ' + esc(fmtDate(rec.date, 'long')) + '</span>' + chip(rec.type, t('type')[rec.type]) + '</div>';
+  }
 
   /* ---------- Views: sign in ---------- */
   function viewLogin() {
     var last = readItem('local', KEY.lastName) || '';
+    var leaf = function (iso, kind) {
+      var d = leafParts(iso);
+      return '<li class="leaf leaf--' + kind + '"><span class="leaf-day">' + esc(d.day) + '</span><span class="leaf-mon">' + esc(d.mon) + '</span></li>';
+    };
     return '<section class="login">' +
       '<div class="login-hero">' +
         LOGO +
         '<p class="login-statement">' + esc(t('loginStatement')) + '</p>' +
         '<ul class="strip strip--hero" aria-hidden="true">' +
-          '<li class="leaf leaf--counted"><span class="leaf-day">' + esc(leafParts('2026-10-05').day) + '</span><span class="leaf-mon">' + esc(leafParts('2026-10-05').mon) + '</span></li>' +
-          '<li class="leaf leaf--counted"><span class="leaf-day">' + esc(leafParts('2026-10-19').day) + '</span><span class="leaf-mon">' + esc(leafParts('2026-10-19').mon) + '</span></li>' +
-          '<li class="leaf leaf--review"><span class="leaf-day">' + esc(leafParts('2026-10-26').day) + '</span><span class="leaf-mon">' + esc(leafParts('2026-10-26').mon) + '</span></li>' +
+          leaf('2026-10-05', 'absent') + leaf('2026-10-19', 'absent') + leaf('2026-10-26', 'review') +
           '<li class="leaf leaf--left"></li><li class="leaf leaf--left"></li><li class="leaf leaf--left"></li>' +
         '</ul>' +
       '</div>' +
@@ -696,7 +834,7 @@
     var tag = route.name === 'list' ? 'h1' : 'h2';
     var rows = courses.map(function (c) {
       var s = summary(c);
-      var note = s.review > 0 ? '<span class="course-note">' + ICON.review + '<span>' + esc(t('reviewCount', s.review)) + '</span></span>' : '';
+      var note = s.counts.review > 0 ? '<span class="course-note">' + ICON.review + '<span>' + esc(t('reviewCount', s.counts.review)) + '</span></span>' : '';
       return '<li><a class="course-row" href="' + href(c) + '"' + (c.id === current ? ' aria-current="page"' : '') + '>' +
         '<span class="course-code">' + esc(c.code) + '</span>' +
         chip(s.status, t('status')[s.status]) +
@@ -713,18 +851,30 @@
 
   function viewEmpty() {
     return '<div class="empty only-wide">' +
-      '<ul class="strip" aria-hidden="true"><li class="leaf leaf--counted"></li><li class="leaf leaf--review"></li><li class="leaf leaf--left"></li><li class="leaf leaf--left"></li></ul>' +
+      '<ul class="strip" aria-hidden="true"><li class="leaf leaf--absent"></li><li class="leaf leaf--review"></li><li class="leaf leaf--left"></li><li class="leaf leaf--left"></li></ul>' +
       '<p>' + esc(t('emptyDetail')) + '</p></div>';
   }
 
   function viewCourse(course) {
     var s = summary(course);
-    var leaves = usedLeaves(course).map(function (r) {
+    var c = s.counts;
+
+    // Strip: one calendar leaf per allowed absence without an excuse.
+    var used = course.records.filter(function (r) { return r.type === 'absent' || r.type === 'review'; })
+      .slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    var leaves = used.map(function (r) {
       var d = leafParts(r.date);
-      return '<li class="leaf leaf--' + (r.type === 'review' ? 'review' : 'counted') + '"><span class="leaf-day">' + esc(d.day) + '</span><span class="leaf-mon">' + esc(d.mon) + '</span></li>';
+      return '<li class="leaf leaf--' + r.type + '"><span class="leaf-day">' + esc(d.day) + '</span><span class="leaf-mon">' + esc(d.mon) + '</span></li>';
     });
-    for (var i = s.used; i < s.limit; i += 1) leaves.push('<li class="leaf leaf--left"></li>');
-    var how = t('howBody', Math.round(LIMIT_RATE * 100), course.lectures, s.limit)
+    for (var i = used.length; i < s.unexLimit; i += 1) leaves.push('<li class="leaf leaf--left"></li>');
+
+    // Meter: one segment per allowed absence in total.
+    var segs = [];
+    var push = function (kind, n) { for (var k = 0; k < n; k += 1) segs.push('<span class="seg seg--' + kind + '"></span>'); };
+    push('absent', c.absent); push('review', c.review); push('excused', c.excused); push('late', c.late);
+    push('left', Math.max(0, s.totalLimit - s.totalUsed));
+
+    var how = t('howBody', course.lectures, s.unexLimit, s.totalLimit)
       .map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('');
 
     var callout = '';
@@ -733,27 +883,48 @@
         (s.status === 'close' ? ICON.close : ICON.limit) +
         '<h2 id="callout-title">' + esc(s.status === 'close' ? t('closeTitle') : t('limitTitle')) + '</h2>' +
         '<div><p>' + esc(s.status === 'close' ? t('closeBody', s.left) : t('limitBody')) + '</p>' +
+        '<p class="callout-link"><a href="' + href(course, 'records') + '">' + esc(t('calloutAction')) + '</a></p>' +
         '<p class="hint">' + esc(t('advisorHours')) + '</p></div>' +
         '</section>';
     }
+
+    var hint = '';
+    if (s.left > 0 && s.totalLeft > s.unexLeft) hint = '<p class="block-note">' + esc(t('withExcuseHint', s.totalLeft)) + '</p>';
 
     return '<article class="detail">' +
       backLink('#/', t('backCourses'), 'only-narrow') +
       '<p class="eyebrow-code">' + esc(course.code) + '</p>' +
       '<h1 class="page-title" id="view-title" tabindex="-1">' + esc(courseName(course)) + '</h1>' +
       '<p class="allowance">' + esc(t('canMiss', s.left)) + '</p>' +
-      '<ul class="strip" role="img" aria-label="' + esc(t('stripLabel', s.counted, s.review, s.left)) + '">' + leaves.join('') + '</ul>' +
-      '<ul class="legend" aria-hidden="true">' +
-        '<li><span class="swatch swatch--counted"></span>' + esc(t('legend').counted) + '</li>' +
-        '<li><span class="swatch swatch--review"></span>' + esc(t('legend').review) + '</li>' +
-        '<li><span class="swatch swatch--left"></span>' + esc(t('legend').left) + '</li>' +
-      '</ul>' +
-      '<div class="facts">' +
-        '<div class="status-line">' + chip(s.status, t('status')[s.status]) + '<p>' + esc(t('usedOf', s.used, s.limit)) + '</p></div>' +
-        (s.review > 0 ? '<p>' + esc(t('includesReview', s.review)) + '</p>' : '') +
-        '<p class="muted">' + esc(t('updated', fmtUpdated())) + '</p>' +
-      '</div>' +
+      '<p class="allowance-sub">' + esc(s.binding === 'total' ? t('bindingTotal') : t('bindingUnexcused')) + '</p>' +
+      '<div class="status-line">' + chip(s.status, t('status')[s.status]) + '<p class="muted">' + esc(t('updated', fmtUpdated())) + '</p></div>' +
       callout +
+      '<section class="allowances">' +
+        '<div class="allowance-block">' +
+          '<h2 class="block-title">' + esc(t('unexcusedTitle')) + '</h2>' +
+          '<ul class="strip" role="img" aria-label="' + esc(t('stripLabel', c.absent, c.review, s.unexLeft)) + '">' + leaves.join('') + '</ul>' +
+          '<ul class="legend" aria-hidden="true">' +
+            '<li><span class="swatch swatch--absent"></span>' + esc(t('legend').absent) + '</li>' +
+            '<li><span class="swatch swatch--review"></span>' + esc(t('legend').review) + '</li>' +
+            '<li><span class="swatch swatch--left"></span>' + esc(t('legend').left) + '</li>' +
+          '</ul>' +
+          '<p class="block-line">' + esc(t('unexcusedLine', s.unexUsed, s.unexLimit)) + '</p>' +
+          (c.review > 0 ? '<p class="block-note">' + esc(t('includesReview', c.review)) + '</p>' : '') +
+        '</div>' +
+        '<div class="allowance-block">' +
+          '<h2 class="block-title">' + esc(t('totalTitle')) + '</h2>' +
+          '<div class="meter" role="img" aria-label="' + esc(t('meterLabel', s.totalUsed, s.totalLimit)) + '">' + segs.join('') + '</div>' +
+          '<ul class="legend" aria-hidden="true">' +
+            '<li><span class="swatch swatch--absent"></span>' + esc(t('legend').absent) + '</li>' +
+            '<li><span class="swatch swatch--review"></span>' + esc(t('legend').review) + '</li>' +
+            '<li><span class="swatch swatch--excused"></span>' + esc(t('legend').excused) + '</li>' +
+            '<li><span class="swatch swatch--late"></span>' + esc(t('legend').late) + '</li>' +
+            '<li><span class="swatch swatch--left"></span>' + esc(t('legend').left) + '</li>' +
+          '</ul>' +
+          '<p class="block-line">' + esc(t('totalLine', s.totalUsed, s.totalLimit)) + ' ' + esc(t('breakdown', c)) + '</p>' +
+          hint +
+        '</div>' +
+      '</section>' +
       '<div class="actions"><a class="btn btn--primary" href="' + href(course, 'records') + '">' + esc(t('seeRecords')) + '</a></div>' +
       '<details class="disclosure"><summary>' + ICON.chevron + '<span>' + esc(t('howTitle')) + '</span></summary>' +
         '<div class="disclosure-body">' + how + '</div></details>' +
@@ -762,20 +933,24 @@
 
   function viewRecords(course) {
     var items = course.records.map(function (r) {
-      var actions = '';
+      var actions = [];
       var reportBox = '';
       if (r.report) {
         reportBox = '<p class="record-report">' + ICON.flag + '<span>' + esc(t('reportSentLine', r.report.ref)) + '</span></p>';
-        actions = '<div class="record-actions"><button type="button" class="btn-text" data-action="withdraw" data-course="' + course.id + '" data-record="' + r.id + '">' + esc(t('withdraw')) + '</button></div>';
+        actions.push('<button type="button" class="btn-text" data-action="withdraw" data-course="' + course.id + '" data-record="' + r.id + '">' + esc(t('withdraw')) + '</button>');
+      } else if (r.type === 'absent') {
+        actions.push('<a class="btn btn--small" href="' + href(course, 'records/' + r.id + '/excuse') + '">' + esc(t('submitExcuseLink')) + '</a>');
+        actions.push('<a class="btn-text" href="' + href(course, 'records/' + r.id + '/report') + '">' + esc(t('mistake')) + '</a>');
       } else if (r.type === 'review') {
-        actions = '<div class="record-actions"><a class="btn-text" href="' + href(course, 'records/' + r.id) + '">' + esc(t('viewExcuse')) + '</a></div>';
-      } else if (r.type === 'counted') {
-        actions = '<div class="record-actions"><a class="btn-text" href="' + href(course, 'records/' + r.id + '/report') + '">' + esc(t('somethingWrong')) + '</a></div>';
+        actions.push('<a class="btn btn--small" href="' + href(course, 'records/' + r.id) + '">' + esc(t('trackLink')) + '</a>');
+      } else if (r.type === 'late') {
+        actions.push('<a class="btn-text" href="' + href(course, 'records/' + r.id + '/report') + '">' + esc(t('mistake')) + '</a>');
       }
       return '<li class="record">' +
         '<span class="record-date">' + esc(fmtDate(r.date, 'long')) + '</span>' +
         chip(r.type, t('type')[r.type]) +
-        reportBox + actions +
+        reportBox +
+        (actions.length ? '<div class="record-actions">' + actions.join('') + '</div>' : '') +
         '</li>';
     }).join('');
     return '<article class="detail">' +
@@ -786,20 +961,88 @@
       '</article>';
   }
 
-  function viewExcuse(course, rec) {
+  function viewExcuseForm(course, rec) {
+    var draft = state.excuseDrafts[rec.id] || { reason: '', file: '', note: '' };
+    var reasons = ['medical', 'family', 'official', 'other'].map(function (k) {
+      return '<label class="choice"><input type="radio" name="excuse-reason" value="' + k + '"' + (draft.reason === k ? ' checked' : '') + '><span>' + esc(t('excuseReasons')[k]) + '</span></label>';
+    }).join('');
+    var fileArea = draft.file
+      ? '<div class="file-chip">' + ICON.file + '<span class="file-name">' + esc(draft.file) + '</span>' +
+          '<button type="button" class="btn-text" data-action="remove-file">' + esc(t('removeFile')) + '</button></div>' +
+        '<p class="hint">' + esc(t('sampleNote')) + '</p>'
+      : '<button type="button" class="btn btn--secondary btn--attach" id="attach-btn" data-action="attach" aria-describedby="doc-hint">' + ICON.clip + '<span>' + esc(t('attach')) + '</span></button>';
+    return '<article class="detail">' +
+      backLink(href(course, 'records'), t('cancel')) +
+      '<h1 class="page-title" id="view-title" tabindex="-1">' + esc(t('excuseFormTitle')) + '</h1>' +
+      '<p class="page-intro">' + esc(t('excuseFormIntro')) + '</p>' +
+      recordCard(course, rec) +
+      '<form class="form" id="excuse-form" novalidate data-course="' + course.id + '" data-record="' + rec.id + '">' +
+        '<div id="excuse-send-error" tabindex="-1"></div>' +
+        '<fieldset id="excuse-reason-group">' +
+          '<legend>' + esc(t('reasonLegend')) + '</legend>' +
+          '<div id="excuse-reason-error"></div>' +
+          reasons +
+        '</fieldset>' +
+        '<div class="field" id="doc-field">' +
+          '<p class="field-label" id="doc-label">' + esc(t('docLabel')) + '</p>' +
+          '<p class="hint" id="doc-hint">' + esc(t('docHint')) + '</p>' +
+          '<div id="doc-error"></div>' +
+          '<div id="doc-area">' + fileArea + '</div>' +
+        '</div>' +
+        '<div>' +
+          '<label class="field-label" for="excuse-note">' + esc(t('excuseNoteLabel')) + '</label>' +
+          '<textarea id="excuse-note" name="excuse-note" maxlength="200" aria-describedby="excuse-note-hint">' + esc(draft.note) + '</textarea>' +
+          '<p class="hint" id="excuse-note-hint">' + esc(t('noteHint', draft.note.length)) + '</p>' +
+        '</div>' +
+        '<p class="privacy">' + ICON.lock + '<span>' + esc(t('excusePrivacy')) + '</span></p>' +
+        '<div class="form-actions">' +
+          '<button type="submit" class="btn btn--primary" id="excuse-send-btn">' + esc(t('submitExcuse')) + '</button>' +
+          '<a class="btn btn--secondary" href="' + href(course, 'records') + '">' + esc(t('cancel')) + '</a>' +
+        '</div>' +
+      '</form>' +
+      '</article>';
+  }
+
+  function viewExcuseSent(course, rec) {
     var s = summary(course);
+    return '<article class="detail">' +
+      '<div class="sent-mark">' + ICON.check + '</div>' +
+      '<h1 class="page-title" id="view-title" tabindex="-1">' + esc(t('excuseSentTitle')) + '</h1>' +
+      '<p class="lead">' + esc(t('excuseSentLead', fmtDate(rec.excuse.decisionBy, 'long'))) + '</p>' +
+      '<dl class="keyfacts">' +
+        '<div><dt>' + esc(t('reference')) + '</dt><dd class="ref">' + esc(rec.excuse.ref) + '</dd></div>' +
+        '<div><dt>' + esc(t('course')) + '</dt><dd>' + esc(course.code) + '</dd></div>' +
+        '<div><dt>' + esc(t('absenceOn')) + '</dt><dd>' + esc(fmtDate(rec.date, 'long')) + '</dd></div>' +
+      '</dl>' +
+      '<p class="outcome outcome--yes spaced">' + ICON.check + '<span>' + esc(t('ifAccepted', leftIfAccepted(s))) + '</span></p>' +
+      '<div class="actions">' +
+        '<a class="btn btn--primary" href="' + href(course, 'records/' + rec.id) + '">' + esc(t('trackExcuse')) + '</a>' +
+        '<a class="btn btn--secondary" href="' + href(course, 'records') + '">' + esc(t('backToRecords')) + '</a>' +
+      '</div>' +
+      '</article>';
+  }
+
+  function viewExcuseStatus(course, rec) {
+    var s = summary(course);
+    var ex = rec.excuse;
     return '<article class="detail">' +
       backLink(href(course, 'records'), t('backRecords')) +
       '<p class="eyebrow-code">' + esc(course.code) + '</p>' +
       '<h1 class="page-title" id="view-title" tabindex="-1">' + esc(t('excuseTitle')) + '</h1>' +
       '<p class="lead">' + esc(t('excuseLead')) + '</p>' +
+      '<ol class="timeline">' +
+        '<li class="step step--done"><span class="step-mark">' + ICON.check + '</span><div><p class="step-title">' + esc(t('stepSent')) + '</p><p class="step-meta">' + esc(fmtDate(ex.submitted, 'long')) + '</p></div></li>' +
+        '<li class="step step--current" aria-current="step"><span class="step-mark">' + ICON.review + '</span><div><p class="step-title">' + esc(t('stepReview')) + '</p><p class="step-meta">' + esc(t('inProgress')) + '</p></div></li>' +
+        '<li class="step"><span class="step-mark"></span><div><p class="step-title">' + esc(t('stepDecision')) + '</p><p class="step-meta">' + esc(t('expectedBy', fmtDate(ex.decisionBy, 'long'))) + '</p></div></li>' +
+      '</ol>' +
       '<dl class="keyfacts">' +
         '<div><dt>' + esc(t('absenceOn')) + '</dt><dd>' + esc(fmtDate(rec.date, 'long')) + '</dd></div>' +
-        '<div><dt>' + esc(t('submittedOn')) + '</dt><dd>' + esc(fmtDate(rec.submitted, 'long')) + '</dd></div>' +
-        '<div><dt>' + esc(t('decisionBy')) + '</dt><dd>' + esc(fmtDate(rec.decisionBy, 'long')) + '</dd></div>' +
+        '<div><dt>' + esc(t('reasonLabel')) + '</dt><dd>' + esc(t('excuseReasons')[ex.reason]) + '</dd></div>' +
+        '<div><dt>' + esc(t('docLabel')) + '</dt><dd>' + esc(ex.file) + '</dd></div>' +
+        '<div><dt>' + esc(t('reference')) + '</dt><dd class="ref">' + esc(ex.ref) + '</dd></div>' +
       '</dl>' +
       '<div class="outcomes">' +
-        '<p class="outcome outcome--yes">' + ICON.check + '<span>' + esc(t('ifAccepted', s.left + 1)) + '</span></p>' +
+        '<p class="outcome outcome--yes">' + ICON.check + '<span>' + esc(t('ifAccepted', leftIfAccepted(s))) + '</span></p>' +
         '<p class="outcome outcome--no">' + ICON.dash + '<span>' + esc(t('ifRejected', s.left)) + '</span></p>' +
       '</div>' +
       '</article>';
@@ -807,14 +1050,16 @@
 
   function viewReport(course, rec) {
     var draft = state.drafts[rec.id] || { reason: '', note: '' };
-    var reasons = ['attended', 'late', 'other'].map(function (k) {
+    var reasons = ['attended', 'late', 'other'].filter(function (k) {
+      return !(rec.type === 'late' && k === 'late');
+    }).map(function (k) {
       return '<label class="choice"><input type="radio" name="reason" value="' + k + '"' + (draft.reason === k ? ' checked' : '') + '><span>' + esc(t('reasons')[k]) + '</span></label>';
     }).join('');
     return '<article class="detail">' +
       backLink(href(course, 'records'), t('cancel')) +
       '<h1 class="page-title" id="view-title" tabindex="-1">' + esc(t('reportTitle')) + '</h1>' +
       '<p class="page-intro">' + esc(t('reportIntro')) + '</p>' +
-      '<div class="record-card"><span><strong>' + esc(course.code) + '</strong> · ' + esc(fmtDate(rec.date, 'long')) + '</span>' + chip(rec.type, t('type')[rec.type]) + '</div>' +
+      recordCard(course, rec) +
       '<form class="form" id="report-form" novalidate data-course="' + course.id + '" data-record="' + rec.id + '">' +
         '<div id="send-error" tabindex="-1"></div>' +
         '<fieldset id="reason-group">' +
@@ -924,7 +1169,7 @@
       if (r.observation) details += '<div><dt>' + esc(t('observation')) + '</dt><dd>' + esc(r.observation) + '</dd></div>';
       details += '<div><dt>' + esc(t('recorded')) + '</dt><dd>' + esc(fmtStamp(r.at)) + '</dd></div>';
       return '<li class="eval-record">' +
-        '<div class="eval-record-head"><strong>' + esc(r.participant) + ', ' + esc(t('tasks')[r.task]) + '</strong>' + outcomeChip(r.outcome) + '</div>' +
+        '<div class="eval-record-head"><strong>' + esc(r.participant) + ', ' + esc(t('tasks')[r.task] || r.task) + '</strong>' + outcomeChip(r.outcome) + '</div>' +
         '<dl>' + details + '</dl>' +
         '<div><button type="button" class="btn-text btn-text--danger" data-action="eval-remove" data-id="' + esc(r.id) + '">' + esc(t('remove')) + '</button></div>' +
         '</li>';
@@ -1019,7 +1264,9 @@
       case 'evaluation': mainEl.innerHTML = viewEvaluation(); title = t('evalTitle'); bindEvalForm(); break;
       case 'course': mainEl.innerHTML = viewCourse(route.course); title = route.course.code; break;
       case 'records': mainEl.innerHTML = viewRecords(route.course); title = t('recordsTitle'); break;
-      case 'excuse': mainEl.innerHTML = viewExcuse(route.course, route.rec); title = t('excuseTitle'); break;
+      case 'excuseForm': mainEl.innerHTML = viewExcuseForm(route.course, route.rec); title = t('excuseFormTitle'); bindExcuseForm(); break;
+      case 'excuseSent': mainEl.innerHTML = viewExcuseSent(route.course, route.rec); title = t('excuseSentTitle'); break;
+      case 'excuseStatus': mainEl.innerHTML = viewExcuseStatus(route.course, route.rec); title = t('excuseTitle'); break;
       case 'report': mainEl.innerHTML = viewReport(route.course, route.rec); title = t('reportTitle'); bindReportForm(); break;
       case 'sent': mainEl.innerHTML = viewSent(route.course, route.rec); title = t('sentTitle'); break;
       default: mainEl.innerHTML = viewEmpty(); title = t('coursesTitle');
@@ -1058,8 +1305,7 @@
     form.querySelector('#' + id + '-error').innerHTML = '';
     var input = form.querySelector('#' + id);
     input.removeAttribute('aria-invalid');
-    var described = id === 'username' ? 'username-hint' : 'caps-note';
-    input.setAttribute('aria-describedby', described);
+    input.setAttribute('aria-describedby', id === 'username' ? 'username-hint' : 'caps-note');
   }
 
   function setLoginFieldError(form, id, message) {
@@ -1086,9 +1332,7 @@
 
     writeItem('local', KEY.lastName, name);
     var btn = form.querySelector('#signin-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>' + esc(t('signingIn')) + '</span>';
-    srAnnounce(t('signingIn'));
+    setBusy(btn, t('signingIn'));
 
     window.setTimeout(function () {
       var account = accountByName(name);
@@ -1123,6 +1367,123 @@
     window.setTimeout(function () { announce(t('signedOut')); }, 80);
   }
 
+  /* ---------- Shared form helpers ---------- */
+  function clearGroupError(form, name) {
+    var group = form.querySelector('#' + name + '-group');
+    if (group) group.classList.remove('has-error');
+    var holder = form.querySelector('#' + name + '-error');
+    if (holder) holder.innerHTML = '';
+    Array.prototype.forEach.call(form.querySelectorAll('input[name="' + name + '"]'), function (r) {
+      r.removeAttribute('aria-invalid');
+      r.removeAttribute('aria-describedby');
+    });
+  }
+
+  function setGroupError(form, name, message) {
+    var group = form.querySelector('#' + name + '-group');
+    if (group) group.classList.add('has-error');
+    form.querySelector('#' + name + '-error').innerHTML = fieldError(name + '-error-text', message);
+    var inputs = form.querySelectorAll('input[name="' + name + '"]');
+    Array.prototype.forEach.call(inputs, function (r) {
+      r.setAttribute('aria-invalid', 'true');
+      r.setAttribute('aria-describedby', name + '-error-text');
+    });
+    return inputs[0];
+  }
+
+  function setBusy(btn, label) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>' + esc(label) + '</span>';
+    srAnnounce(label);
+  }
+
+  function failSend(btn, label, holder, message) {
+    state.failNext = false;
+    document.getElementById('test-panel').innerHTML = viewTestPanel();
+    btn.disabled = false;
+    btn.textContent = label;
+    holder.innerHTML = '<p class="alert" role="alert">' + ICON.alert + '<span>' + esc(message) + '</span></p>';
+    holder.focus();
+  }
+
+  /* ---------- Excuse form behaviour ---------- */
+  function excuseDraft(recId) {
+    if (!state.excuseDrafts[recId]) state.excuseDrafts[recId] = { reason: '', file: '', note: '' };
+    return state.excuseDrafts[recId];
+  }
+
+  function bindExcuseForm() {
+    var form = document.getElementById('excuse-form');
+    if (!form) return;
+    var recId = form.getAttribute('data-record');
+    var note = form.querySelector('#excuse-note');
+    var hint = form.querySelector('#excuse-note-hint');
+    note.addEventListener('input', function () {
+      hint.textContent = t('noteHint', note.value.length);
+      excuseDraft(recId).note = note.value;
+    });
+    form.addEventListener('change', function (e) {
+      if (e.target.name === 'excuse-reason') {
+        excuseDraft(recId).reason = e.target.value;
+        clearGroupError(form, 'excuse-reason');
+      }
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      excuseDraft(recId).note = note.value;
+      submitExcuse(form);
+    });
+  }
+
+  function refreshDocArea(form, focusSelector) {
+    var course = findCourse(form.getAttribute('data-course'));
+    var rec = findRecord(course, form.getAttribute('data-record'));
+    var fresh = document.createElement('div');
+    fresh.innerHTML = viewExcuseForm(course, rec);
+    form.querySelector('#doc-area').innerHTML = fresh.querySelector('#doc-area').innerHTML;
+    if (focusSelector) {
+      var el = form.querySelector(focusSelector);
+      if (el) el.focus();
+    }
+  }
+
+  function submitExcuse(form) {
+    var course = findCourse(form.getAttribute('data-course'));
+    var rec = findRecord(course, form.getAttribute('data-record'));
+    var d = excuseDraft(rec.id);
+    var holder = form.querySelector('#excuse-send-error');
+    holder.innerHTML = '';
+    form.querySelector('#doc-error').innerHTML = '';
+
+    var firstInvalid = null;
+    if (!d.reason) firstInvalid = setGroupError(form, 'excuse-reason', t('errReason'));
+    if (!d.file) {
+      form.querySelector('#doc-error').innerHTML = fieldError('doc-error-text', t('errDoc'));
+      var attachBtn = form.querySelector('#attach-btn');
+      if (attachBtn) attachBtn.setAttribute('aria-describedby', 'doc-error-text doc-hint');
+      firstInvalid = firstInvalid || attachBtn;
+    }
+    if (firstInvalid) { firstInvalid.focus(); return; }
+
+    var btn = form.querySelector('#excuse-send-btn');
+    setBusy(btn, t('submittingExcuse'));
+    window.setTimeout(function () {
+      if (state.failNext) { failSend(btn, t('submitExcuse'), holder, t('errExcuseSend')); return; }
+      rec.type = 'review';
+      rec.excuse = {
+        ref: 'EX-' + state.nextExcuse,
+        reason: d.reason,
+        file: d.file,
+        note: d.note,
+        submitted: TODAY,
+        decisionBy: addDays(TODAY, DECISION_DAYS)
+      };
+      state.nextExcuse += 1;
+      delete state.excuseDrafts[rec.id];
+      location.hash = href(course, 'records/' + rec.id + '/excuse/sent');
+    }, SEND_DELAY);
+  }
+
   /* ---------- Report form behaviour ---------- */
   function bindReportForm() {
     var form = document.getElementById('report-form');
@@ -1152,53 +1513,19 @@
     });
   }
 
-  function clearGroupError(form, name) {
-    var group = form.querySelector('#' + name + '-group');
-    if (group) group.classList.remove('has-error');
-    var holder = form.querySelector('#' + name + '-error');
-    if (holder) holder.innerHTML = '';
-    Array.prototype.forEach.call(form.querySelectorAll('input[name="' + name + '"]'), function (r) {
-      r.removeAttribute('aria-invalid');
-      r.removeAttribute('aria-describedby');
-    });
-  }
-
-  function setGroupError(form, name, message) {
-    var group = form.querySelector('#' + name + '-group');
-    if (group) group.classList.add('has-error');
-    form.querySelector('#' + name + '-error').innerHTML = fieldError(name + '-error-text', message);
-    var inputs = form.querySelectorAll('input[name="' + name + '"]');
-    Array.prototype.forEach.call(inputs, function (r) {
-      r.setAttribute('aria-invalid', 'true');
-      r.setAttribute('aria-describedby', name + '-error-text');
-    });
-    return inputs[0];
-  }
-
   function submitReport(form) {
     var course = findCourse(form.getAttribute('data-course'));
     var rec = findRecord(course, form.getAttribute('data-record'));
     var draft = state.drafts[rec.id];
-    var sendError = form.querySelector('#send-error');
-    sendError.innerHTML = '';
+    var holder = form.querySelector('#send-error');
+    holder.innerHTML = '';
 
     if (!draft.reason) { setGroupError(form, 'reason', t('errChoose')).focus(); return; }
 
     var btn = form.querySelector('#send-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>' + esc(t('sending')) + '</span>';
-    srAnnounce(t('sending'));
-
+    setBusy(btn, t('sending'));
     window.setTimeout(function () {
-      if (state.failNext) {
-        state.failNext = false;
-        document.getElementById('test-panel').innerHTML = viewTestPanel();
-        btn.disabled = false;
-        btn.textContent = t('send');
-        sendError.innerHTML = '<p class="alert" role="alert">' + ICON.alert + '<span>' + esc(t('errSend')) + '</span></p>';
-        sendError.focus();
-        return;
-      }
+      if (state.failNext) { failSend(btn, t('send'), holder, t('errSend')); return; }
       rec.report = { ref: 'AT-' + state.nextRef, reason: draft.reason, note: draft.note };
       state.nextRef += 1;
       delete state.drafts[rec.id];
@@ -1273,7 +1600,7 @@
     var en = STR.en;
     var head = ['Participant', 'Task', 'Outcome', 'Errors', 'Help given', 'Satisfaction (1-5)', 'Reassuring or frustrating', 'Observation', 'Recorded at'];
     var lines = [head.join(',')].concat(state.evals.map(function (r) {
-      return [r.participant, en.tasks[r.task], en.outcomes[r.outcome], r.errors, r.help, r.sat, r.comment, r.observation, r.at].map(csvCell).join(',');
+      return [r.participant, en.tasks[r.task] || r.task, en.outcomes[r.outcome], r.errors, r.help, r.sat, r.comment, r.observation, r.at].map(csvCell).join(',');
     }));
     var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     var url = URL.createObjectURL(blob);
@@ -1339,6 +1666,7 @@
     if (state.menuOpen && !e.target.closest('.account')) setMenu(false);
     if (!el) return;
     var action = el.getAttribute('data-action');
+    var form, course, rec;
 
     if (action === 'skip') {
       e.preventDefault();
@@ -1369,9 +1697,22 @@
       el.textContent = showing ? t('show') : t('hide');
       el.setAttribute('aria-label', showing ? t('showLabel') : t('hideLabel'));
       pw.focus();
+    } else if (action === 'attach' || action === 'remove-file') {
+      form = document.getElementById('excuse-form');
+      var draft = excuseDraft(form.getAttribute('data-record'));
+      if (action === 'attach') {
+        draft.file = SAMPLE_FILE;
+        form.querySelector('#doc-error').innerHTML = '';
+        refreshDocArea(form, '[data-action="remove-file"]');
+        srAnnounce(SAMPLE_FILE);
+      } else {
+        draft.file = '';
+        refreshDocArea(form, '#attach-btn');
+        srAnnounce(t('fileRemoved'));
+      }
     } else if (action === 'withdraw') {
-      var course = findCourse(el.getAttribute('data-course'));
-      var rec = findRecord(course, el.getAttribute('data-record'));
+      course = findCourse(el.getAttribute('data-course'));
+      rec = findRecord(course, el.getAttribute('data-record'));
       delete rec.report;
       render(false);
       announce(t('withdrawn'));
