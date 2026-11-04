@@ -251,6 +251,7 @@
       reviewCount: function (n) { return n === 1 ? '1 excuse under review' : n + ' excuses under review'; },
       emptyDetail: 'Choose a course to see how many more lectures you can miss.',
       backCourses: 'My courses',
+      allCourses: 'Back to my courses',
       status: { safe: 'Safe', close: 'Close to limit', limit: 'No absences left' },
       canMiss: function (n) {
         if (n <= 0) return 'You can’t miss any more lectures';
@@ -465,6 +466,7 @@
       reviewCount: function (n) { return n === 1 ? 'عذر واحد قيد المراجعة' : n === 2 ? 'عذران قيد المراجعة' : num(n) + ' أعذار قيد المراجعة'; },
       emptyDetail: 'اختر مقرراً لترى عدد المحاضرات التي يمكنك الغياب عنها بعد.',
       backCourses: 'مقرراتي',
+      allCourses: 'الرجوع إلى مقرراتي',
       status: { safe: 'آمن', close: 'قريب من الحد', limit: 'لا يوجد غياب متبقٍ' },
       canMiss: function (n) {
         if (n <= 0) return 'لا يمكنك الغياب عن أي محاضرة أخرى';
@@ -946,6 +948,8 @@
       '<div class="actions"><a class="btn btn--primary" href="' + href(course, 'records') + '">' + esc(t('seeRecords')) + '</a></div>' +
       '<details class="disclosure"><summary>' + ICON.chevron + '<span>' + esc(t('howTitle')) + '</span></summary>' +
         '<div class="disclosure-body">' + how + '</div></details>' +
+      // I3 (from P4–P6): a wrong course tap could only be undone from the small link at the top.
+      '<div class="actions actions--back only-narrow"><a class="btn btn--secondary" href="#/">' + ICON.back + '<span>' + esc(t('allCourses')) + '</span></a></div>' +
       '</article>';
   }
 

@@ -431,6 +431,8 @@ body[data-route="page"] .pane-list { display: none; }
   text-decoration: none;
 }
 .back:hover { background: var(--accent-soft); }
+.actions--back { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); }
+.actions--back .btn { gap: 6px; }
 .eyebrow-code { color: var(--ink-2); font-weight: 500; }
 .page-title { font-size: var(--step-2); font-weight: 600; line-height: 1.25; }
 .page-intro { margin-top: 6px; color: var(--ink-2); }
