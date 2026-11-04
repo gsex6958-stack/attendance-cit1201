@@ -11,6 +11,10 @@ A clickable prototype for one student journey: finding out how many more lecture
 
 The sign-in page never asks for a university password, and nothing typed there leaves the browser.
 
+## Phone frame
+
+On a computer, the link opens the app inside a phone: a lock screen with two sample notifications (an absence recorded, an excuse under review), a home screen with the My Attendance icon, then the app itself. Tapping a notification opens the matching screen. On a phone the link opens the app directly, so usability tests are not affected. Add `?frame=0` to skip the frame on a computer. The frame is a presentation wrapper only; the screens tested are the same.
+
 ## Screens
 
 | ID | Screen | Address |
@@ -32,6 +36,13 @@ The account menu (top right) has **Larger text**, **About this prototype** and *
 
 As shown in myUT: a student is barred if absences without an excuse exceed 20% of lectures, or if all absences exceed 35%. All absences = without excuse + with excuse + times late. An excuse under review counts as without an excuse until it is decided (a design assumption to confirm).
 
+## Iteration
+
+Changes made after the evaluation findings (see slides 8 and 9):
+
+- **I1, from EF1:** on the course page, the second number now says it applies only if excuses are accepted, and that the number at the top is the limit until then.
+- **I2, from EF2:** the course page now says how many absences can still be excused, with **Submit an excuse** and **Track the excuse under review**.
+
 ## Usability testing mode
 
 Add `?test=1` to the address, for example `.../attendance-cit1201/?test=1`. A facilitator panel appears at the bottom with:
@@ -51,9 +62,12 @@ At the top of `app.js`:
 
 ## Files
 
-- `index.html`: page structure and the Group 6 logo
+- `index.html`: the phone frame for computers (lock screen, home screen, notifications); on a phone it opens `app.html` directly
+- `app.html`: the app's page structure and the Group 6 logo
 - `styles.css`: layout, colours and responsive rules
 - `app.js`: accounts, sample data, Arabic and English text, screens and behaviour
+
+Upload all five files together to the top of the repository.
 
 ## AI use
 

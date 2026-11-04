@@ -4,47 +4,442 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>My Attendance · Group 6</title>
-  <meta name="description" content="Coded prototype by Group 6 for CIT 1201: check how many more lectures you can miss in each course before the absence limit.">
+  <meta name="description" content="Coded prototype by Group 6 for CIT 1201, shown in a phone frame: how many more lectures you can miss, and submitting and tracking an excuse.">
   <meta property="og:title" content="My Attendance by Group 6">
-  <meta property="og:description" content="CIT 1201 coded prototype: how many more lectures can you miss?">
-  <meta name="theme-color" content="#FFFFFF">
+  <meta property="og:description" content="CIT 1201 coded prototype: how many more lectures can you miss, and where is your excuse?">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M24 3 42.2 13.5v21L24 45 5.8 34.5v-21z' fill='%230F5F59'/%3E%3Ctext x='24' y='31.5' text-anchor='middle' font-family='Arial,sans-serif' font-size='21' font-weight='700' fill='white'%3E6%3C/text%3E%3C/svg%3E">
+  <script>
+    // On a real phone, open the app itself: the frame is only for larger screens.
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var small = window.matchMedia('(max-width: 760px), (max-height: 560px)').matches;
+      if (small || q.get('frame') === '0') {
+        q.delete('frame');
+        var s = q.toString();
+        location.replace('app.html' + (s ? '?' + s : '') + location.hash);
+      }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --page: #E6ECE9;
+      --ink: #18262B;
+      --ink-2: #4A5A5F;
+      --accent: #0F5F59;
+      --accent-ink: #0B4440;
+      --device: #1A1F21;
+      --screen-w: 390px;
+      --screen-h: 844px;
+      --scale: 1;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: 'Readex Pro', system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 600px at 75% 15%, #F4F7F5 0, rgba(244,247,245,0) 60%),
+        var(--page);
+      overflow: hidden;
+    }
+    .stage {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 72px;
+      padding: 24px 40px;
+    }
+    [dir="rtl"] .stage { flex-direction: row-reverse; }
+
+    /* ---------- Side panel ---------- */
+    .panel { width: 340px; display: grid; gap: 20px; }
+    [dir="rtl"] .panel { text-align: right; }
+    .panel-brand { display: flex; align-items: center; gap: 14px; }
+    [dir="rtl"] .panel-brand { flex-direction: row-reverse; justify-content: flex-start; }
+    .panel-brand svg { width: 52px; height: 52px; flex: none; }
+    .panel-name { font-size: 1.5rem; font-weight: 600; line-height: 1.2; }
+    .panel-by { font-size: 0.9375rem; color: var(--ink-2); }
+    .panel p { font-size: 1rem; line-height: 1.6; color: var(--ink-2); }
+    .panel-actions { display: grid; gap: 10px; justify-items: start; }
+    [dir="rtl"] .panel-actions { justify-items: end; }
+    .btn {
+      font: inherit; font-size: 0.9375rem; font-weight: 500;
+      min-height: 44px; padding: 0 18px; border-radius: 12px;
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1.5px solid var(--accent); color: var(--accent); background: transparent;
+      text-decoration: none; cursor: pointer;
+    }
+    .btn:hover { background: rgba(15,95,89,0.08); }
+    .btn--solid { background: var(--accent); color: #fff; }
+    .btn--solid:hover { background: var(--accent-ink); }
+    .btn:focus-visible, .notif:focus-visible, .open-app:focus-visible, .side-btn:focus-visible { outline: 3px solid #E0A43A; outline-offset: 3px; }
+    .panel-note { font-size: 0.8125rem !important; color: #66767A !important; }
+
+    /* ---------- Device ---------- */
+    .device-wrap { width: calc(430px * var(--scale)); height: calc(884px * var(--scale)); flex: none; }
+    .device {
+      position: relative;
+      width: 430px; height: 884px;
+      padding: 20px;
+      border-radius: 68px;
+      background: linear-gradient(145deg, #2B3236, var(--device) 40%, #0E1112);
+      box-shadow: 0 0 0 2px #3A4246, 0 40px 80px rgba(16,32,30,0.28), 0 12px 24px rgba(16,32,30,0.18);
+      transform: scale(var(--scale));
+      transform-origin: top left;
+    }
+    .side-btn {
+      position: absolute; width: 4px; border: 0; background: #2C3437; cursor: pointer; padding: 0;
+    }
+    .side-btn--power { right: -4px; top: 210px; height: 96px; border-radius: 0 3px 3px 0; }
+    .side-btn--vol1 { left: -4px; top: 180px; height: 62px; border-radius: 3px 0 0 3px; cursor: default; }
+    .side-btn--vol2 { left: -4px; top: 256px; height: 62px; border-radius: 3px 0 0 3px; cursor: default; }
+    .screen {
+      position: relative;
+      width: var(--screen-w); height: var(--screen-h);
+      border-radius: 50px;
+      overflow: hidden;
+      background: #F3F5F2;
+      isolation: isolate;
+    }
+    .island {
+      position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+      width: 124px; height: 36px; border-radius: 20px; background: #000; z-index: 30;
+    }
+    .statusbar {
+      position: absolute; inset: 0 0 auto 0; height: 54px; z-index: 20;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 30px 0 34px;
+      font-size: 0.9375rem; font-weight: 600; letter-spacing: 0.01em;
+      color: var(--ink); background: #FFFFFF;
+      direction: ltr;
+    }
+    .statusbar .icons { display: flex; gap: 6px; align-items: center; }
+    .statusbar svg { display: block; }
+    .app-frame {
+      position: absolute; top: 54px; left: 0; width: 100%; height: calc(100% - 54px);
+      border: 0; background: #F3F5F2;
+    }
+    .home-bar {
+      position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+      width: 134px; height: 5px; border-radius: 3px; background: rgba(24,38,43,0.85);
+      z-index: 21; pointer-events: none;
+    }
+
+    /* ---------- Lock screen ---------- */
+    .lock {
+      position: absolute; inset: 0; z-index: 24;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 70px 14px 28px;
+      color: #F4F8F6;
+      background:
+        radial-gradient(420px 360px at 20% 12%, rgba(95,168,158,0.55) 0, rgba(95,168,158,0) 70%),
+        radial-gradient(380px 420px at 90% 85%, rgba(224,164,58,0.28) 0, rgba(224,164,58,0) 70%),
+        linear-gradient(165deg, #0F5F59 0%, #0D3E3A 55%, #0A2523 100%);
+      transition: transform 380ms cubic-bezier(.2,.8,.2,1), opacity 300ms ease;
+    }
+    .lock-hex {
+      position: absolute; width: 520px; height: 520px; left: 50%; top: 52%;
+      transform: translate(-50%, -50%); opacity: 0.08; pointer-events: none;
+    }
+    .lock .statusbar { background: transparent; color: #F4F8F6; }
+    .lock-date { font-size: 1.125rem; font-weight: 400; opacity: 0.92; margin-top: 8px; }
+    .lock-time { font-size: 5.6rem; font-weight: 300; line-height: 1; letter-spacing: -0.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .notifs { width: 100%; margin-top: auto; display: grid; gap: 10px; }
+    .notif {
+      display: grid; grid-template-columns: 38px 1fr; gap: 4px 12px; align-items: start;
+      width: 100%; padding: 12px 14px; border: 0; border-radius: 22px; text-align: left;
+      background: rgba(244,248,246,0.86); color: var(--ink);
+      -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+      font: inherit; cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+      animation: drop 520ms cubic-bezier(.2,.8,.2,1) both;
+    }
+    .notif:nth-child(2) { animation-delay: 140ms; }
+    .notif:hover { background: rgba(255,255,255,0.94); }
+    [dir="rtl"] .notif { text-align: right; }
+    .notif-icon { grid-row: span 3; width: 38px; height: 38px; }
+    .notif-head { display: flex; justify-content: space-between; gap: 8px; font-size: 0.8125rem; color: #4A5A5F; }
+    .notif-title { font-size: 0.9375rem; font-weight: 600; line-height: 1.35; }
+    .notif-body { font-size: 0.9375rem; line-height: 1.4; color: #24353A; }
+    .open-app {
+      margin-top: 18px; min-height: 44px; padding: 0 22px; border-radius: 22px;
+      border: 1px solid rgba(244,248,246,0.45); background: rgba(244,248,246,0.14);
+      color: #F4F8F6; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer;
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    }
+    .open-app:hover { background: rgba(244,248,246,0.24); }
+    .lock .home-bar { position: static; transform: none; margin-top: 16px; background: rgba(244,248,246,0.9); }
+
+    /* ---------- Home screen ---------- */
+    .home {
+      position: absolute; inset: 0; z-index: 23;
+      display: flex; flex-direction: column; align-items: stretch;
+      padding: 70px 22px 28px;
+      color: #F4F8F6;
+      background:
+        radial-gradient(420px 360px at 80% 10%, rgba(95,168,158,0.45) 0, rgba(95,168,158,0) 70%),
+        linear-gradient(165deg, #0F5F59 0%, #0D3E3A 55%, #0A2523 100%);
+      transition: opacity 260ms ease, transform 320ms cubic-bezier(.2,.8,.2,1);
+    }
+    .home .statusbar { background: transparent; color: #F4F8F6; }
+    .home-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px 18px; justify-items: center; margin-top: 18px; }
+    .app-icon { display: grid; justify-items: center; gap: 6px; border: 0; background: none; color: #F4F8F6; font: inherit; font-size: 0.75rem; cursor: pointer; width: 76px; }
+    .app-icon svg { width: 62px; height: 62px; border-radius: 15px; box-shadow: 0 6px 14px rgba(0,0,0,0.25); transition: transform 160ms ease; }
+    .app-icon:hover svg { transform: scale(1.05); }
+    .app-icon:focus-visible { outline: 3px solid #E0A43A; outline-offset: 4px; border-radius: 16px; }
+    .tile { width: 62px; height: 62px; border-radius: 15px; background: rgba(244,248,246,0.14); }
+    .home-hint { margin-top: 26px; text-align: center; font-size: 0.9375rem; opacity: 0.92; }
+    .dock { margin-top: auto; display: flex; justify-content: space-around; padding: 14px 10px; border-radius: 30px; background: rgba(244,248,246,0.16); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+    .home .home-bar { position: static; transform: none; margin: 14px auto 0; background: rgba(244,248,246,0.9); }
+
+    .screen.is-home .lock, .screen.is-open .lock { transform: translateY(-104%); opacity: 0; pointer-events: none; }
+    .screen.is-open .home { opacity: 0; transform: scale(1.08); pointer-events: none; }
+    .screen.is-open .app-frame { animation: rise 420ms cubic-bezier(.2,.8,.2,1) both; }
+    @keyframes drop { from { opacity: 0; transform: translateY(-14px) scale(0.98); } to { opacity: 1; transform: none; } }
+    @keyframes rise { from { opacity: 0.4; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      .lock, .home, .notif, .screen.is-open .app-frame { transition: none; animation: none; }
+    }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  </style>
 </head>
-<body data-route="login">
-  <a class="skip" id="skip-link" href="#main" data-action="skip">Skip to content</a>
+<body>
+  <div class="stage">
+    <aside class="panel" aria-labelledby="panel-name">
+      <div class="panel-brand">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3 42.2 13.5v21L24 45 5.8 34.5v-21z" fill="#0F5F59"/><path d="M24 9.6 36.5 16.8v14.4L24 38.4 11.5 31.2V16.8z" fill="none" stroke="#8CCBC0" stroke-width="1.4"/><text x="24" y="30.6" text-anchor="middle" font-family="Readex Pro, system-ui, sans-serif" font-size="17" font-weight="600" fill="#FFFFFF">6</text></svg>
+        <div>
+          <h1 class="panel-name" id="panel-name">My Attendance</h1>
+          <p class="panel-by" id="panel-by">By Group 6 · CIT 1201</p>
+        </div>
+      </div>
+      <p id="panel-intro">An interactive prototype, shown on a phone. Tap a notification on the lock screen to open the app.</p>
+      <div class="panel-actions">
+        <button type="button" class="btn btn--solid" id="btn-lock">Back to the lock screen</button>
+        <a class="btn" id="btn-plain" href="app.html">Open without the phone frame</a>
+      </div>
+      <p class="panel-note" id="panel-note">Sample data only. Not a University of Tabuk service.</p>
+    </aside>
 
-  <header class="topbar">
-    <a class="brand" href="#/">
-      <svg class="brand-logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path d="M24 3 42.2 13.5v21L24 45 5.8 34.5v-21z" fill="#0F5F59"/><path d="M24 9.6 36.5 16.8v14.4L24 38.4 11.5 31.2V16.8z" fill="none" stroke="#8CCBC0" stroke-width="1.4"/><text x="24" y="30.6" text-anchor="middle" font-family="Readex Pro, system-ui, sans-serif" font-size="17" font-weight="600" fill="#FFFFFF">6</text></svg>
-      <span class="brand-text">
-        <span class="brand-name" id="brand-name">My Attendance</span>
-        <span class="brand-by" id="brand-by">By Group 6</span>
-      </span>
-    </a>
-    <div class="topbar-actions">
-      <button type="button" class="btn btn--quiet lang-toggle" id="lang-toggle" data-action="lang" lang="ar">عربي</button>
-      <div id="account"></div>
+    <div class="device-wrap" id="device-wrap">
+      <div class="device">
+        <button type="button" class="side-btn side-btn--power" id="power" aria-label="Lock the phone"></button>
+        <span class="side-btn side-btn--vol1" aria-hidden="true"></span>
+        <span class="side-btn side-btn--vol2" aria-hidden="true"></span>
+        <div class="screen" id="screen">
+          <div class="island" aria-hidden="true"></div>
+
+          <div class="statusbar" aria-hidden="true">
+            <span class="sb-time" data-clock="short">9:41</span>
+            <span class="icons" data-icons></span>
+          </div>
+          <iframe class="app-frame" id="app-frame" title="My Attendance app" tabindex="-1"></iframe>
+          <div class="home-bar" aria-hidden="true"></div>
+
+          <section class="home" id="home" aria-label="Home screen" aria-hidden="true">
+            <div class="statusbar" aria-hidden="true">
+              <span data-clock="short">9:41</span>
+              <span class="icons" data-icons></span>
+            </div>
+            <div class="home-grid">
+              <button type="button" class="app-icon" id="app-icon" tabindex="-1">
+                <svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="#0F5F59"/><path d="M24 8 37.9 16v16L24 40 10.1 32V16z" fill="#12302E"/><path d="M24 12.4 34.1 18.2v11.6L24 35.6 13.9 29.8V18.2z" fill="none" stroke="#8CCBC0" stroke-width="1.2"/><text x="24" y="29.4" text-anchor="middle" font-family="Readex Pro, system-ui, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF">6</text></svg>
+                <span id="app-icon-label">My Attendance</span>
+              </button>
+              <span class="tile" aria-hidden="true"></span><span class="tile" aria-hidden="true"></span><span class="tile" aria-hidden="true"></span>
+              <span class="tile" aria-hidden="true"></span><span class="tile" aria-hidden="true"></span><span class="tile" aria-hidden="true"></span><span class="tile" aria-hidden="true"></span>
+            </div>
+            <p class="home-hint" id="home-hint">Tap My Attendance to open it</p>
+            <div class="dock" aria-hidden="true"><span class="tile"></span><span class="tile"></span><span class="tile"></span><span class="tile"></span></div>
+            <div class="home-bar" aria-hidden="true"></div>
+          </section>
+
+          <section class="lock" id="lock" aria-label="Lock screen">
+            <svg class="lock-hex" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3 42.2 13.5v21L24 45 5.8 34.5v-21z" fill="none" stroke="#F4F8F6" stroke-width="0.6"/><path d="M24 9.6 36.5 16.8v14.4L24 38.4 11.5 31.2V16.8z" fill="none" stroke="#F4F8F6" stroke-width="0.4"/></svg>
+            <div class="statusbar" aria-hidden="true">
+              <span></span>
+              <span class="icons" data-icons></span>
+            </div>
+            <p class="lock-date" id="lock-date">Monday 2 November</p>
+            <p class="lock-time" id="lock-time" data-clock="long">9:41</p>
+            <div class="notifs" id="notifs"></div>
+            <button type="button" class="open-app" id="open-app">Open My Attendance</button>
+            <div class="home-bar" aria-hidden="true"></div>
+          </section>
+        </div>
+      </div>
     </div>
-  </header>
-
-  <div class="layout">
-    <nav class="pane-list" id="course-list" tabindex="-1" aria-labelledby="courses-title"></nav>
-    <main class="pane-detail" id="main" tabindex="-1"></main>
   </div>
+  <p class="visually-hidden" id="sr" aria-live="polite"></p>
 
-  <footer class="footer">
-    <p id="footer-note">Designed by Group 6 for CIT 1201. Sample data only; no real student information is used.</p>
-    <div id="test-panel"></div>
-  </footer>
+  <script>
+  (function () {
+    'use strict';
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <div class="visually-hidden" id="sr-status" aria-live="polite"></div>
+    var STR = {
+      en: {
+        by: 'By Group 6 · CIT 1201',
+        intro: 'An interactive prototype, shown on a phone. Tap a notification on the lock screen to open the app.',
+        lockBtn: 'Back to the lock screen',
+        plain: 'Open without the phone frame',
+        note: 'Sample data only. Not a University of Tabuk service.',
+        openApp: 'Unlock',
+        hint: 'Tap My Attendance to open it',
+        power: 'Lock the phone',
+        app: 'My Attendance',
+        now: 'now',
+        earlier: 'Sun',
+        n1t: 'Absence recorded · CIT 1201',
+        n1b: 'Monday 2 November. You can miss 3 more lectures. Tap to submit an excuse.',
+        n2t: 'Excuse under review · CIT 1201',
+        n2b: 'Your excuse for 26 October: decision expected by Tuesday 10 November.',
+        opened: 'My Attendance is open.',
+        locked: 'Phone locked.'
+      },
+      ar: {
+        by: 'من تصميم المجموعة ٦ · CIT 1201',
+        intro: 'نموذج تفاعلي معروض على جوال. اضغط على إشعار في شاشة القفل لفتح التطبيق.',
+        lockBtn: 'الرجوع لشاشة القفل',
+        plain: 'فتح بدون إطار الجوال',
+        note: 'بيانات تجريبية فقط. ليست خدمة رسمية من جامعة تبوك.',
+        openApp: 'فتح القفل',
+        hint: 'اضغط على حضوري لفتحه',
+        power: 'قفل الجوال',
+        app: 'حضوري',
+        now: 'الآن',
+        earlier: 'الأحد',
+        n1t: 'تم تسجيل غياب · CIT 1201',
+        n1b: 'الاثنين ٢ نوفمبر. يمكنك الغياب عن ٣ محاضرات أخرى. اضغط لتقديم عذر.',
+        n2t: 'عذر قيد المراجعة · CIT 1201',
+        n2b: 'عذرك عن ٢٦ أكتوبر: القرار متوقع بحلول الثلاثاء ١٠ نوفمبر.',
+        opened: 'تم فتح حضوري.',
+        locked: 'تم قفل الجوال.'
+      }
+    };
 
-  <noscript><p class="noscript">This prototype needs JavaScript. Please enable it and reload the page.</p></noscript>
-  <script src="app.js"></script>
+    var ICON = '<svg class="notif-icon" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="#0F5F59"/><path d="M24 8 37.9 16v16L24 40 10.1 32V16z" fill="#12302E"/><path d="M24 12.4 34.1 18.2v11.6L24 35.6 13.9 29.8V18.2z" fill="none" stroke="#8CCBC0" stroke-width="1.2"/><text x="24" y="29.4" text-anchor="middle" font-family="Readex Pro, system-ui, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF">6</text></svg>';
+    var BARS = '<svg width="18" height="12" viewBox="0 0 18 12" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1" fill="currentColor"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="currentColor"/><rect x="10" y="3" width="3" height="9" rx="1" fill="currentColor"/><rect x="15" y="0" width="3" height="12" rx="1" fill="currentColor"/></svg>' +
+      '<svg width="16" height="12" viewBox="0 0 16 12" aria-hidden="true"><path d="M8 11.5 5.6 9a3.4 3.4 0 0 1 4.8 0zM3.5 6.9a6.4 6.4 0 0 1 9 0L11.1 8.3a4.4 4.4 0 0 0-6.2 0zM1.3 4.6a9.6 9.6 0 0 1 13.4 0L13.3 6a7.6 7.6 0 0 0-10.6 0z" fill="currentColor"/></svg>' +
+      '<svg width="27" height="13" viewBox="0 0 27 13" aria-hidden="true"><rect x="0.5" y="0.5" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" opacity="0.45"/><rect x="2" y="2" width="16" height="9" rx="2" fill="currentColor"/><rect x="24" y="4.5" width="2" height="4" rx="1" fill="currentColor" opacity="0.5"/></svg>';
+
+    var params = new URLSearchParams(location.search);
+    var appQuery = (function () { var q = new URLSearchParams(location.search); q.delete('frame'); var s = q.toString(); return s ? '?' + s : ''; })();
+    var frame = document.getElementById('app-frame');
+    var screenEl = document.getElementById('screen');
+    var lockEl = document.getElementById('lock');
+
+    function read(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+    function lang() {
+      var p = params.get('lang');
+      if (p === 'ar' || p === 'en') return p;
+      return read('group6-lang') === 'ar' ? 'ar' : 'en';
+    }
+    function t(k) { return STR[lang()][k]; }
+    function el(id) { return document.getElementById(id); }
+
+    function renderText() {
+      var l = lang();
+      document.documentElement.lang = l;
+      document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+      el('panel-name').textContent = t('app') === 'حضوري' ? 'حضوري' : 'My Attendance';
+      el('panel-by').textContent = t('by');
+      el('panel-intro').textContent = t('intro');
+      el('btn-lock').textContent = t('lockBtn');
+      el('btn-plain').textContent = t('plain');
+      el('panel-note').textContent = t('note');
+      el('open-app').textContent = t('openApp');
+      el('app-icon-label').textContent = t('app');
+      el('home-hint').textContent = t('hint');
+      el('power').setAttribute('aria-label', t('power'));
+      el('notifs').innerHTML =
+        notif('#/course/cit1201', t('n1t'), t('n1b'), t('now')) +
+        notif('#/course/cit1201/records/cit-4', t('n2t'), t('n2b'), t('earlier'));
+      tick();
+    }
+    function notif(target, title, body, when) {
+      return '<button type="button" class="notif" data-target="' + target + '">' + ICON +
+        '<span class="notif-head"><span>' + t('app') + '</span><span>' + when + '</span></span>' +
+        '<span class="notif-title">' + title + '</span>' +
+        '<span class="notif-body">' + body + '</span></button>';
+    }
+
+    function tick() {
+      var now = new Date();
+      var loc = lang() === 'ar' ? 'ar-u-nu-arab' : 'en-GB';
+      var hm = new Intl.DateTimeFormat(loc, { hour: 'numeric', minute: '2-digit', hour12: lang() === 'ar' ? true : false }).format(now)
+        .replace(/\s?[صم]$/, '');
+      document.querySelectorAll('[data-clock]').forEach(function (n) { n.textContent = hm; });
+      el('lock-date').textContent = new Intl.DateTimeFormat(lang() === 'ar' ? 'ar-u-ca-gregory-nu-arab' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' }).format(now);
+    }
+
+    var homeEl = document.getElementById('home');
+    function setLockFocusable(on) { lockEl.querySelectorAll('button').forEach(function (b) { b.tabIndex = on ? 0 : -1; }); }
+    function open(target) {
+      frame.src = 'app.html' + appQuery + (target || '#/');
+      screenEl.classList.remove('is-home');
+      screenEl.classList.add('is-open');
+      frame.setAttribute('tabindex', '0');
+      lockEl.setAttribute('aria-hidden', 'true'); setLockFocusable(false);
+      homeEl.setAttribute('aria-hidden', 'true'); el('app-icon').tabIndex = -1;
+      el('sr').textContent = t('opened');
+      setTimeout(function () { try { frame.focus(); } catch (e) {} }, 60);
+    }
+    function unlock() {
+      screenEl.classList.remove('is-open');
+      screenEl.classList.add('is-home');
+      lockEl.setAttribute('aria-hidden', 'true'); setLockFocusable(false);
+      homeEl.removeAttribute('aria-hidden'); el('app-icon').tabIndex = 0;
+      frame.setAttribute('tabindex', '-1');
+      setTimeout(function () { el('app-icon').focus(); }, 60);
+    }
+    function lock() {
+      screenEl.classList.remove('is-open', 'is-home');
+      frame.setAttribute('tabindex', '-1');
+      homeEl.setAttribute('aria-hidden', 'true'); el('app-icon').tabIndex = -1;
+      lockEl.removeAttribute('aria-hidden'); setLockFocusable(true);
+      el('sr').textContent = t('locked');
+      var first = lockEl.querySelector('.notif');
+      if (first) first.focus();
+    }
+
+    // Fit the phone to the window height.
+    function fit() {
+      var s = Math.min(1, (window.innerHeight - 40) / 884, (window.innerWidth - 120) / 430);
+      document.documentElement.style.setProperty('--scale', Math.max(0.55, s).toFixed(3));
+    }
+
+    document.querySelectorAll('[data-icons]').forEach(function (n) { n.innerHTML = BARS; });
+    el('notifs').addEventListener('click', function (e) {
+      var b = e.target.closest('.notif');
+      if (b) open(b.getAttribute('data-target'));
+    });
+    el('open-app').addEventListener('click', unlock);
+    el('app-icon').addEventListener('click', function () { open('#/'); });
+    el('btn-lock').addEventListener('click', lock);
+    el('power').addEventListener('click', function () {
+      if (screenEl.classList.contains('is-open') || screenEl.classList.contains('is-home')) lock(); else unlock();
+    });
+    el('btn-plain').addEventListener('click', function (e) {
+      e.preventDefault();
+      var h = '';
+      try { h = screenEl.classList.contains('is-open') ? frame.contentWindow.location.hash : location.hash; } catch (err) { h = location.hash; }
+      location.href = 'app.html' + appQuery + (h || '');
+    });
+    window.addEventListener('storage', function (e) { if (e.key === 'group6-lang') renderText(); });
+    window.addEventListener('resize', fit);
+
+    // Load the app behind the lock screen so it opens instantly.
+    frame.src = 'app.html' + appQuery + (location.hash || '#/');
+    renderText();
+    fit();
+    setInterval(tick, 15000);
+    // A deep link (for example #/course/cit1201) skips the lock screen.
+    if (location.hash && location.hash.length > 2) open(location.hash);
+  })();
+  </script>
 </body>
 </html>

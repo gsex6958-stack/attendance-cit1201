@@ -269,7 +269,9 @@
         if (c.late) parts.push(c.late + ' late');
         return parts.length ? 'That is ' + enList(parts) + '.' : '';
       },
-      withExcuseHint: function (n) { return 'With accepted excuses, you could miss up to ' + n + ' more in total.'; },
+      withExcuseHint: function (n) { return 'If your excuses are accepted, you could miss up to ' + n + ' more in total. Until they are decided, the number at the top is your limit.'; },
+      excusableLine: function (n) { return n === 1 ? '1 absence without an excuse can still be excused.' : n + ' absences without an excuse can still be excused.'; },
+      trackReviewLink: function (n) { return n === 1 ? 'Track the excuse under review' : 'Track the excuses under review'; },
       includesReview: function (n) { return n === 1 ? '1 excuse is under review and counts as without an excuse until it is decided.' : n + ' excuses are under review and count as without an excuse until they are decided.'; },
       stripLabel: function (a, r, left) { return 'Without an excuse: ' + a + ' counted, ' + r + ' under review, ' + left + ' left'; },
       meterLabel: function (u, l) { return 'All absences: ' + u + ' of ' + l + ' used'; },
@@ -341,7 +343,7 @@
       reasonLabel: 'Reason',
       reference: 'Reference',
       ifAccepted: function (n) { return 'If accepted: ' + STR.en.canMiss(n).replace('You can', 'you can') + '.'; },
-      ifRejected: function (n) { return 'If not accepted: no change, ' + STR.en.canMiss(n).replace('You can', 'you can') + '.'; },
+      ifRejected: function (n) { return 'If not accepted: no change, ' + STR.en.canMiss(n).replace('You can', 'you can') + '. The committee’s reason will appear here.'; },
 
       /* Report a record made by mistake */
       reportTitle: 'Report a record made by mistake',
@@ -480,7 +482,9 @@
         if (c.late) parts.push(num(c.late) + ' تأخير');
         return parts.length ? 'منها ' + parts.join('، ') + '.' : '';
       },
-      withExcuseHint: function (n) { return 'مع أعذار مقبولة، يمكنك الغياب حتى ' + arLectures(n) + ' ' + arMore(n) + ' في الإجمالي.'; },
+      withExcuseHint: function (n) { return 'إذا قُبلت أعذارك، يمكنك الغياب حتى ' + arLectures(n) + ' ' + arMore(n) + ' في الإجمالي. وحتى يصدر القرار، الرقم في الأعلى هو حدّك.'; },
+      excusableLine: function (n) { return n === 1 ? 'غياب واحد بدون عذر يمكنك تقديم عذر عنه.' : n === 2 ? 'غيابان بدون عذر يمكنك تقديم عذر عنهما.' : num(n) + ' غيابات بدون عذر يمكنك تقديم عذر عنها.'; },
+      trackReviewLink: function (n) { return n === 1 ? 'متابعة العذر قيد المراجعة' : 'متابعة الأعذار قيد المراجعة'; },
       includesReview: function (n) { return n === 1 ? 'عذر واحد قيد المراجعة، ويُحسب بدون عذر حتى يصدر القرار.' : n === 2 ? 'عذران قيد المراجعة، ويُحسبان بدون عذر حتى يصدر القرار.' : num(n) + ' أعذار قيد المراجعة، وتُحسب بدون عذر حتى يصدر القرار.'; },
       stripLabel: function (a, r, left) { return 'بدون عذر: محسوب ' + num(a) + '، قيد المراجعة ' + num(r) + '، المتبقي ' + num(left); },
       meterLabel: function (u, l) { return 'إجمالي الغياب: ' + num(u) + ' من ' + num(l); },
@@ -549,7 +553,7 @@
       reasonLabel: 'السبب',
       reference: 'المرجع',
       ifAccepted: function (n) { return 'إذا قُبل: ' + STR.ar.canMiss(n) + '.'; },
-      ifRejected: function (n) { return 'إذا لم يُقبل: لا تغيير، ' + STR.ar.canMiss(n) + '.'; },
+      ifRejected: function (n) { return 'إذا لم يُقبل: لا تغيير، ' + STR.ar.canMiss(n) + '. وسيظهر هنا سبب اللجنة.'; },
 
       reportTitle: 'الإبلاغ عن سجل مسجّل بالخطأ',
       reportIntro: 'أخبر أستاذ المقرر بالخطأ. يبقى السجل كما هو حتى يراجعه.',
@@ -891,6 +895,19 @@
     var hint = '';
     if (s.left > 0 && s.totalLeft > s.unexLeft) hint = '<p class="block-note">' + esc(t('withExcuseHint', s.totalLeft)) + '</p>';
 
+    // I2 (from EF2): the excuse journey also starts from the allowance, not only from the records list.
+    var excusable = course.records.filter(function (r) { return r.type === 'absent' && !r.report; });
+    var inReview = course.records.filter(function (r) { return r.type === 'review'; });
+    var excuseActions = '';
+    if (excusable.length || inReview.length) {
+      excuseActions = '<div class="block-actions">' +
+        (excusable.length ? '<p class="block-line">' + esc(t('excusableLine', excusable.length)) + '</p>' : '') +
+        '<div class="block-buttons">' +
+        (excusable.length ? '<a class="btn btn--small" href="' + href(course, excusable.length === 1 ? 'records/' + excusable[0].id + '/excuse' : 'records') + '">' + esc(t('submitExcuseLink')) + '</a>' : '') +
+        (inReview.length ? '<a class="btn btn--secondary btn--compact" href="' + href(course, inReview.length === 1 ? 'records/' + inReview[0].id : 'records') + '">' + esc(t('trackReviewLink', inReview.length)) + '</a>' : '') +
+        '</div></div>';
+    }
+
     return '<article class="detail">' +
       backLink('#/', t('backCourses'), 'only-narrow') +
       '<p class="eyebrow-code">' + esc(course.code) + '</p>' +
@@ -910,6 +927,7 @@
           '</ul>' +
           '<p class="block-line">' + esc(t('unexcusedLine', s.unexUsed, s.unexLimit)) + '</p>' +
           (c.review > 0 ? '<p class="block-note">' + esc(t('includesReview', c.review)) + '</p>' : '') +
+          excuseActions +
         '</div>' +
         '<div class="allowance-block">' +
           '<h2 class="block-title">' + esc(t('totalTitle')) + '</h2>' +

@@ -809,6 +809,11 @@ textarea {
 .btn--small:hover { background: var(--accent-hover); }
 .record-actions { margin-top: 2px; }
 
+/* I2: excuse actions inside the "Without an excuse" block on the course page */
+.block-actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.block-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn--compact { min-height: 44px; padding: 0 16px; font-size: 0.9375rem; }
+
 /* ---------- Excuse form ---------- */
 .field-label { font-weight: 600; }
 .btn--attach { justify-self: start; }
